@@ -45,3 +45,7 @@ htmlcov/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Large Data files (GloVe embeddings > 100MB)
+data/*.txt
+!data/.gitkeep

@@ -1,13 +1,13 @@
 from typing import Any, Dict, Optional
-from core.data_structures import Queue, Stack
+from core.structures import LinkedQueue, LinkedStack
 from core.storage import JSONStorage
 
 
 class BaseManager:
     def __init__(self, storage: Optional[JSONStorage] = None) -> None:
         self.storage = storage or JSONStorage()
-        self.undo_stack: Stack = Stack()
-        self.task_queue: Queue = Queue()
+        self.undo_Linkedstack: LinkedStack = LinkedStack()
+        self.task_Linkedqueue: LinkedQueue = LinkedQueue()
         self.items: Dict[str, Any] = {}
 
     def load(self) -> None:
@@ -22,8 +22,8 @@ class BaseManager:
     def pop_undo(self) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
 
-    def enqueue_task(self, task_data: Any) -> None:
+    def enLinkedqueue_task(self, task_data: Any) -> None:
         raise NotImplementedError
 
-    def dequeue_task(self) -> Optional[Any]:
+    def deLinkedqueue_task(self) -> Optional[Any]:
         raise NotImplementedError
