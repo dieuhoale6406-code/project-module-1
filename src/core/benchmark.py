@@ -2,7 +2,6 @@ from typing import Any, Dict, List, Optional
 from core.algorithms.base import BaseVectorIndex
 from models.record import VectorRecord
 
-
 class BenchmarkRunner:
     """
     Khung sườn bộ thực thi thử nghiệm hiệu năng cho (Phát - CNTT).
