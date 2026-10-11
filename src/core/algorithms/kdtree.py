@@ -1,5 +1,6 @@
 from typing import Any, List, Optional, Tuple
 from .base import BaseVectorIndex
+import math
 
 
 class KDTreeNode:
@@ -86,6 +87,17 @@ class KDTreeIndex(BaseVectorIndex):
                 raise ValueError(
                     f"Record {record.id} has dimension"
                     f"{len(record.values)}, expected {self.dimension}"
+                )
+
+        for value in record.values:
+            if(
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+            ):
+                raise ValueError(
+                    f"Record {record.id} contains "
+                    f"an invalid coordinate: {value!r}"
                 )
 
         self.root = self._build_recursive(records, depth=0)
