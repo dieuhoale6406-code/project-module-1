@@ -39,23 +39,37 @@ class KDTreeIndex(BaseVectorIndex):
         self.root: Optional[KDTreeNode] = None
 
     def _build_recursive(self, records: List[Any], depth: int = 0) -> Optional[KDTreeNode]:
-        """
-        Xây dựng cây KD-Tree đệ quy.
+        # Điều kiện dừng khi không còn vector
+        if not records:
+            return None
+
+        # Chọn trục phân chia
+        axis = depth % self.dimension
+
+        sorted_records = sorted(
+            records,
+            key=lambda record: record.values[axis]
+        )
+
+        # Tính median
+        median_idx = len(sorted_records) // 2
+        median_record = sorted_records[median_idx]
+
+        # Tạo Node
+        node = KDTreeNode(median_record, axis=axis)
+
+        # Xây dựng 2 cây con
+        node.left = self._build_recursive(
+            sorted_records[:median_idx],
+            depth + 1
+        )
+
+        node.right = self._build_recursive(
+            sorted_records[median_idx + 1:],
+            depth + 1
+        )
         
-        Các bước thực hiện gợi ý:
-            1. Điều kiện dừng: Nếu danh sách `records` rỗng, trả về None.
-            2. Xác định trục phân chia tại độ sâu hiện tại: axis = depth % self.dimension.
-            3. Sắp xếp danh sách `records` theo giá trị tọa độ tại trục `axis`:
-               records.sort(key=lambda r: r.values[axis])
-            4. Tìm vị trí trung vị (median): median_idx = len(records) // 2.
-            5. Tạo nút gốc hiện tại chứa phần tử trung vị: node = KDTreeNode(records[median_idx], axis=axis).
-            6. Đệ quy xây dựng cây con trái:
-               node.left = self._build_recursive(records[:median_idx], depth + 1)
-            7. Đệ quy xây dựng cây con phải:
-               node.right = self._build_recursive(records[median_idx + 1:], depth + 1)
-            8. Trả về nút `node`.
-        """
-        raise NotImplementedError("Cài đặt hàm dựng cây đệ quy KD-Tree.")
+        return node
 
     def build(self, records: List[Any]) -> None:
         """
@@ -64,6 +78,16 @@ class KDTreeIndex(BaseVectorIndex):
         Tham số:
             records: Danh sách VectorRecord.
         """
+        if self.dimension <= 0:
+            raise ValueError("Dimension must be greater than 0")
+
+        for record in records:
+            if len(record.values) != self.dimension:
+                raise ValueError(
+                    f"Record {record.id} has dimension"
+                    f"{len(record.values)}, expected {self.dimension}"
+                )
+
         self.root = self._build_recursive(records, depth=0)
 
     def search(self, query_values: List[float], top_k: int) -> List[Tuple[Any, float]]:
