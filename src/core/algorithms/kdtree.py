@@ -1,6 +1,9 @@
-from typing import Any, List, Optional, Tuple
-from .base import BaseVectorIndex
+import heapq
 import math
+from typing import Any, List, Optional, Tuple
+
+from core.metrics import euclidean_distance
+from .base import BaseVectorIndex
 
 
 class KDTreeNode:
@@ -89,40 +92,75 @@ class KDTreeIndex(BaseVectorIndex):
                     f"{len(record.values)}, expected {self.dimension}"
                 )
 
-        for value in record.values:
-            if(
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(value)
-            ):
-                raise ValueError(
-                    f"Record {record.id} contains "
-                    f"an invalid coordinate: {value!r}"
-                )
+            for value in record.values:
+                if(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                ):
+                    raise ValueError(
+                        f"Record {record.id} contains "
+                        f"an invalid coordinate: {value!r}"
+                    )
 
         self.root = self._build_recursive(records, depth=0)
 
     def search(self, query_values: List[float], top_k: int) -> List[Tuple[Any, float]]:
         """
-        Tìm kiếm K láng giềng gần nhất trên cây KD-Tree có áp dụng kỹ thuật tỉa nhánh (Pruning).
-        
-        Các bước thực hiện gợi ý:
-            1. Dùng một Bounded Max-Heap (hoặc danh sách ưu tiên) để lưu trữ Top-K láng giềng gần nhất.
-            2. Viết hàm đệ quy phụ `_search_node(node)`:
-               a. Nếu node is None: kết thúc nhánh.
-               b. Tính khoảng cách hình học Euclidean giữa `query_values` và `node.record.values`.
-               c. Đẩy (khoảng cách, node.record) vào Heap Top-K.
-               d. Xác định trục axis = node.axis.
-               e. So sánh tọa độ: diff = query_values[axis] - node.record.values[axis].
-               f. Xác định nhánh ưu tiên (near_node) và nhánh đối diện (far_node):
-                  - Nếu diff < 0: near_node = node.left, far_node = node.right.
-                  - Ngược lại: near_node = node.right, far_node = node.left.
-               g. Đệ quy duyệt nhánh ưu tiên trước: `_search_node(near_node)`.
-               h. KIỂM TRA ĐIỀU KIỆN TỈA NHÁNH (Pruning):
-                  - Khoảng cách từ query tới siêu phẳng phân cách là |diff|.
-                  - Nếu heap chưa đầy Top-K HOẶC |diff| < khoảng cách tới phần tử xa nhất trong Heap:
-                    Bắt buộc phải duyệt thêm nhánh đối diện: `_search_node(far_node)`.
-            3. Bắt đầu đệ quy từ `self.root`.
-            4. Trích xuất và sắp xếp kết quả từ Heap trả về danh sách Top-K.
+        Tìm kiếm Top-K vector gần nhất bằng Euclidean Distance với kỹ thuật Pruning.
+
+        Trả về: Danh sách [(VectorRecord, khoảng_cách), ...] sắp xếp tăng dần theo khoảng cách.
         """
-        raise NotImplementedError("Cài đặt thuật toán tìm kiếm KNN trên KD-Tree.")
+        if self.root is None or top_k <= 0:
+            return []
+
+        if len(query_values) != self.dimension:
+            raise ValueError(
+                f"Query vector có {len(query_values)} chiều, kỳ vọng {self.dimension} chiều."
+            )
+
+        # Sử dụng entry_counter để tránh so sánh VectorRecord khi trùng khoảng cách
+        max_heap: List[Tuple[float, int, Any]] = []
+        entry_counter = 0
+
+        def _search_node(node: Optional[KDTreeNode]) -> None:
+            nonlocal entry_counter
+            if node is None:
+                return
+
+            dist = euclidean_distance(query_values, node.record.values)
+
+            # Cập nhật Max-Heap duy trì Top-K
+            if len(max_heap) < top_k:
+                entry_counter += 1
+                heapq.heappush(max_heap, (-dist, entry_counter, node.record))
+            elif dist < -max_heap[0][0]:
+                entry_counter += 1
+                heapq.heapreplace(max_heap, (-dist, entry_counter, node.record))
+
+            # Xác định trục phân cách và khoảng cách chiếu tới siêu phẳng
+            axis = node.axis
+            diff = query_values[axis] - node.record.values[axis]
+
+            # Nhánh ưu tiên (near) và nhánh đối diện (far)
+            if diff < 0:
+                near_branch = node.left
+                far_branch = node.right
+            else:
+                near_branch = node.right
+                far_branch = node.left
+
+            # Luôn duyệt nhánh gần trước
+            _search_node(near_branch)
+            
+            # Chỉ duyệt nhánh xa nếu Heap chưa đủ K phần tử HOẶC khoảng cách |diff| < khoảng cách tệ nhất hiện tại
+            worst_dist = -max_heap[0][0] if max_heap else float("inf")
+            if len(max_heap) < top_k or abs(diff) < worst_dist:
+                _search_node(far_branch)
+
+        _search_node(self.root)
+
+        # Trích xuất từ heap và sắp xếp tăng dần theo khoảng cách thực (dương)
+        results = [(-neg_dist, record) for neg_dist, _, record in max_heap]
+        results.sort(key=lambda x: x[0])
+        return [(record, dist) for dist, record in results]
