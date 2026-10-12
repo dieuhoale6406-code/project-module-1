@@ -4,41 +4,44 @@ from .base import BaseEntity
 
 
 class VectorRecord(BaseEntity):
-    """
-    Thực thể biểu diễn một từ vựng và vector số thực đa chiều trong không gian nhúng.
-    Đóng vai trò là vật chứa dữ liệu thuần túy (Data Holder), không chứa thuật toán tìm kiếm.
-    """
+    """Immutable representation of an embedding vector and its textual label."""
 
     def __init__(self, record_id: str, label: str, values: List[float]) -> None:
         super().__init__(record_id)
         self._label = str(label).strip().lower()
-        self._values = [float(v) for v in values]
-        # Tính trước chuẩn Euclidean L2 (Norm) để các thuật toán tối ưu phép chia
+        parsed_values = []
+        for v in values:
+            val = float(v)
+            if not math.isfinite(val):
+                raise ValueError("Tọa độ vector chứa giá trị không hợp lệ (NaN hoặc Infinity).")
+            parsed_values.append(val)
+        self._values = parsed_values
+        # Precompute Euclidean L2 norm to optimize downstream metric computations.
         sq_sum = sum(v * v for v in self._values)
-        self._norm = math.sqrt(sq_sum) if sq_sum > 0.0 else 1e-9
+        self._norm = math.sqrt(sq_sum)
 
     @property
     def label(self) -> str:
-        """Nhãn từ vựng (ví dụ: 'king', 'queen', 'vietnam')."""
+        """Textual label (e.g., 'king', 'queen', 'vietnam')."""
         return self._label
 
     @property
     def values(self) -> List[float]:
-        """Danh sách tọa độ số thực của vector."""
-        return self._values
+        """Vector coordinates (defensive copy)."""
+        return list(self._values)
 
     @property
     def dimension(self) -> int:
-        """Số chiều của không gian vector (d)."""
+        """Dimension of the vector space (d)."""
         return len(self._values)
 
     @property
     def norm(self) -> float:
-        """Độ dài chuẩn L2 của vector: sqrt(sum(v_i^2))."""
+        """Precomputed L2 norm of the vector: sqrt(sum(v_i^2))."""
         return self._norm
 
     def to_dict(self) -> Dict[str, Any]:
-        """Chuyển đổi thực thể thành dictionary nguyên bản."""
+        """Serialize entity into a dictionary."""
         return {
             "id": self._id,
             "label": self._label,
@@ -49,7 +52,7 @@ class VectorRecord(BaseEntity):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VectorRecord":
-        """Khởi tạo thực thể từ dictionary."""
+        """Instantiate entity from a dictionary."""
         return cls(
             record_id=data["id"],
             label=data["label"],
@@ -58,10 +61,7 @@ class VectorRecord(BaseEntity):
 
     @classmethod
     def from_line(cls, line_idx: int, line_str: str) -> "VectorRecord":
-        """
-        Khởi tạo thực thể trực tiếp từ một dòng file text chuẩn Stanford GloVe:
-        Cấu trúc: 'word v1 v2 v3 ... vd'
-        """
+        """Parse a record from a Stanford GloVe format text line: 'word v1 v2 ... vd'."""
         parts = line_str.strip().split()
         if not parts:
             raise ValueError("Dòng dữ liệu rỗng.")
