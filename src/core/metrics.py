@@ -3,12 +3,7 @@ from typing import List
 
 
 def _validate_vectors(v1: List[float], v2: List[float]) -> None:
-    """
-    Kiểm tra tính hợp lệ của hai vector:
-    - Không được rỗng.
-    - Cùng số chiều.
-    - Không chứa NaN hoặc Infinity.
-    """
+    """Validate that vectors are non-empty, equal in length, and contain finite values."""
     if not v1 or not v2:
         raise ValueError("Vector không được rỗng.")
     if len(v1) != len(v2):
@@ -19,10 +14,7 @@ def _validate_vectors(v1: List[float], v2: List[float]) -> None:
 
 
 def cosine_similarity(v1: List[float], v2: List[float], norm1: float, norm2: float) -> float:
-    """
-    Tính độ tương đồng góc Cosine giữa 2 vector.
-    Gợi ý: Tận dụng norm1 và norm2 đã tính trước để đạt O(d).
-    """
+    """Compute Cosine similarity between two vectors using precomputed L2 norms."""
     _validate_vectors(v1, v2)
 
     if not (math.isfinite(norm1) and math.isfinite(norm2)):
@@ -30,7 +22,7 @@ def cosine_similarity(v1: List[float], v2: List[float], norm1: float, norm2: flo
     if norm1 < 0.0 or norm2 < 0.0:
         raise ValueError("Chuẩn độ dài (norm) không được là số âm.")
 
-    # Xử lý zero vector đúng về mặt toán học; không chia cho 0
+    # Mathematical convention for zero vectors: avoid division by zero.
     if norm1 == 0.0 or norm2 == 0.0:
         return 0.0
 
@@ -41,7 +33,7 @@ def cosine_similarity(v1: List[float], v2: List[float], norm1: float, norm2: flo
     dot = sum(x * y for x, y in zip(v1, v2))
     sim = dot / denom
 
-    # Giới hạn trong [-1.0, 1.0] để khử sai số dấu phẩy động
+    # Clamp to [-1.0, 1.0] to guard against floating-point inaccuracies.
     if sim > 1.0:
         return 1.0
     elif sim < -1.0:
@@ -50,17 +42,13 @@ def cosine_similarity(v1: List[float], v2: List[float], norm1: float, norm2: flo
 
 
 def euclidean_distance(v1: List[float], v2: List[float]) -> float:
-    """
-    Tính khoảng cách hình học Euclidean giữa 2 vector.
-    """
+    """Compute Euclidean distance between two vectors."""
     _validate_vectors(v1, v2)
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(v1, v2)))
 
 
 def dot_product(v1: List[float], v2: List[float]) -> float:
-    """
-    Tính tích vô hướng giữa 2 vector.
-    """
+    """Compute dot product between two vectors."""
     _validate_vectors(v1, v2)
     return sum(x * y for x, y in zip(v1, v2))
 
