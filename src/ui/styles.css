@@ -1,0 +1,568 @@
+/* =====================================================================
+   MINI VECTOR SEARCH ENGINE - CONCISE DESIGN SYSTEM & THEMES
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   1. Theme Variables
+   --------------------------------------------------------------------- */
+:root {
+  /* Light Theme */
+  --bg-app: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-subtle: #F1F5F9;
+  --bg-header-icon: #EFF6FF;
+  --border-header-icon: #DBEAFE;
+  --border-color: #E2E8F0;
+  --border-subtle: #CBD5E1;
+  --text-main: #0F172A;
+  --text-muted: #475569;
+  --text-inverse: #FFFFFF;
+  --brand-primary: #2563EB;
+  --brand-hover: #1D4ED8;
+  --brand-light: #EFF6FF;
+  --input-bg: #FFFFFF;
+  --input-border: #CBD5E1;
+  --code-bg: #F1F5F9;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* Dark Theme Tokens (High-Contrast Navy / Slate) */
+body:has(.theme-marker-dark),
+.stApp:has(.theme-marker-dark) {
+  --bg-app: #0B1220;
+  --bg-surface: #172235;
+  --bg-surface-subtle: #233249;
+  --bg-header-icon: #1E2E48;
+  --border-header-icon: #2E4366;
+  --border-color: #334155;
+  --border-subtle: #475569;
+  --text-main: #FFFFFF;
+  --text-muted: #CBD5E1; /* Bright Slate-300 for crisp readability */
+  --text-inverse: #FFFFFF;
+  --brand-primary: #3B82F6;
+  --brand-hover: #60A5FA;
+  --brand-light: #1E293B;
+  --input-bg: #172235;
+  --input-border: #334155;
+  --code-bg: #233249;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 2px 6px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* ---------------------------------------------------------------------
+   2. Base Layout & Fixed Header
+   --------------------------------------------------------------------- */
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], .main {
+  background-color: var(--bg-app) !important;
+  color: var(--text-main) !important;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+header[data-testid="stHeader"] {
+  display: none !important;
+}
+
+/* Collapse empty markup containers so no unwanted gap is introduced */
+div[data-testid="stVerticalBlock"] > div:has(style),
+div[data-testid="stVerticalBlock"] > div:has(.theme-marker-dark) {
+  display: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  height: 0 !important;
+}
+
+.block-container {
+  padding-top: 4.15rem !important; /* Clears 54px header + exactly 14-16px gap to tabs */
+  padding-bottom: 2.5rem !important;
+  padding-left: clamp(1rem, 3.5vw, 3rem) !important;
+  padding-right: clamp(1rem, 3.5vw, 3rem) !important;
+  max-width: min(96vw, 1400px) !important;
+  width: 100% !important;
+}
+
+.st-key-app_header {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  z-index: 99999 !important;
+  background-color: var(--bg-app) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  box-shadow: var(--shadow-sm) !important;
+  margin: 0 !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.st-key-app_header div[data-testid="stHorizontalBlock"] {
+  max-width: min(96vw, 1400px) !important;
+  margin: 0 auto !important;
+  padding: 0.5rem clamp(1rem, 3.5vw, 3rem) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  box-sizing: border-box !important;
+}
+
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 38px;
+}
+
+.app-header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--bg-header-icon);
+  border: 1px solid var(--border-header-icon);
+  color: var(--brand-primary);
+  flex-shrink: 0;
+}
+
+.app-title {
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  color: var(--text-main) !important;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------
+   3. Header Theme Toggle Button (Compact 40x40 Rounded Square)
+   --------------------------------------------------------------------- */
+.st-key-app_header div[data-testid="stColumn"]:last-child,
+.st-key-app_header .st-key-theme_toggle_btn {
+  display: flex !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.st-key-app_header .st-key-theme_toggle_btn button {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--border-color) !important;
+  background-color: var(--bg-surface) !important;
+  color: var(--text-main) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease !important;
+}
+
+.st-key-app_header .st-key-theme_toggle_btn button:hover {
+  background-color: var(--bg-surface-subtle) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+.st-key-app_header .st-key-theme_toggle_btn button:focus-visible {
+  outline: 2px solid var(--brand-primary) !important;
+  outline-offset: 2px !important;
+}
+
+.st-key-app_header .st-key-theme_toggle_btn button [data-testid="stIconMaterial"] {
+  font-size: 20px !important;
+  font-variation-settings: 'FILL' 0, 'wght' 400 !important;
+  color: var(--text-main) !important;
+}
+
+.st-key-app_header .st-key-theme_toggle_btn button p {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------------
+   4. Navigation Tabs (Prominent Uppercase, Bold & Compact)
+   --------------------------------------------------------------------- */
+div[data-testid="stTabs"] {
+  margin-top: 0 !important;
+}
+
+div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  gap: 0.75rem !important;
+  border-bottom: 2px solid var(--border-color) !important;
+  margin-bottom: 0.85rem !important;
+}
+
+div[data-testid="stTabs"] button[data-baseweb="tab"] {
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
+  padding: 0.55rem 1.4rem !important;
+  background: transparent !important;
+  border: none !important;
+  opacity: 1 !important;
+}
+
+div[data-testid="stTabs"] button[data-baseweb="tab"] * {
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
+  transition: color 0.15s ease;
+}
+
+/* Inactive Tab: Clear, High-Contrast Visibility */
+div[data-testid="stTabs"] button[data-baseweb="tab"]:not([aria-selected="true"]) * {
+  color: var(--text-muted) !important;
+  opacity: 1 !important;
+}
+
+div[data-testid="stTabs"] button[data-baseweb="tab"]:not([aria-selected="true"]):hover * {
+  color: var(--text-main) !important;
+}
+
+/* Active Tab: Bright Accent & Extra Bold */
+div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] * {
+  color: var(--brand-primary) !important;
+  font-weight: 800 !important;
+}
+
+div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] {
+  background-color: var(--brand-primary) !important;
+  height: 3px !important;
+  border-radius: 3px 3px 0 0 !important;
+}
+
+/* ---------------------------------------------------------------------
+   5. Typography, Widgets & Labels
+   --------------------------------------------------------------------- */
+h1, h2, h3, h4, h5, h6, [data-testid="stSubheader"] {
+  color: var(--text-main) !important;
+}
+
+[data-testid="stWidgetLabel"],
+[data-testid="stWidgetLabel"] *,
+[data-testid="stWidgetLabel"] p,
+[data-testid="stWidgetLabel"] span {
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+  color: var(--text-main) !important;
+}
+
+input, textarea, [data-baseweb="select"] span {
+  font-size: 0.9375rem !important;
+  color: var(--text-main) !important;
+}
+
+.stCaption,
+.stCaption *,
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] *,
+[data-testid="stCaptionContainer"] p {
+  font-size: 0.8125rem !important;
+  color: var(--text-muted) !important;
+}
+
+/* ---------------------------------------------------------------------
+   6. Metrics, Cards, Expanders & Empty State
+   --------------------------------------------------------------------- */
+div[data-testid="stMetric"] {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 8px !important;
+  padding: 0.6rem 0.95rem !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+div[data-testid="stMetricValue"],
+div[data-testid="stMetricValue"] * {
+  color: var(--text-main) !important;
+  font-size: 1.4rem !important;
+  font-weight: 700 !important;
+}
+
+div[data-testid="stMetricLabel"],
+div[data-testid="stMetricLabel"] *,
+div[data-testid="stMetric"] [data-testid="stMetricLabel"] *,
+div[data-testid="stMetric"] label,
+div[data-testid="stMetric"] p {
+  color: var(--text-muted) !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+}
+
+body:has(.theme-marker-dark) div[data-testid="stMetricLabel"],
+body:has(.theme-marker-dark) div[data-testid="stMetricLabel"] *,
+body:has(.theme-marker-dark) div[data-testid="stMetric"] [data-testid="stMetricLabel"] *,
+body:has(.theme-marker-dark) div[data-testid="stMetric"] label,
+body:has(.theme-marker-dark) div[data-testid="stMetric"] p,
+.stApp:has(.theme-marker-dark) div[data-testid="stMetricLabel"],
+.stApp:has(.theme-marker-dark) div[data-testid="stMetricLabel"] *,
+.stApp:has(.theme-marker-dark) div[data-testid="stMetric"] [data-testid="stMetricLabel"] *,
+.stApp:has(.theme-marker-dark) div[data-testid="stMetric"] label,
+.stApp:has(.theme-marker-dark) div[data-testid="stMetric"] p {
+  color: #E2E8F0 !important; /* Crystal clear high-contrast in Dark Mode */
+}
+
+body:has(.theme-marker-dark) [data-testid="stWidgetLabel"] *,
+.stApp:has(.theme-marker-dark) [data-testid="stWidgetLabel"] * {
+  color: #FFFFFF !important;
+}
+
+body:has(.theme-marker-dark) [data-testid="stCaptionContainer"] *,
+body:has(.theme-marker-dark) .stCaption *,
+.stApp:has(.theme-marker-dark) [data-testid="stCaptionContainer"] *,
+.stApp:has(.theme-marker-dark) .stCaption * {
+  color: #CBD5E1 !important;
+}
+
+div[data-testid="stExpander"] {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 8px !important;
+  background-color: var(--bg-surface) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+div[data-testid="stExpander"] summary {
+  color: var(--text-main) !important;
+  font-weight: 600 !important;
+}
+
+.empty-state-card {
+  text-align: center;
+  padding: 1.6rem 1.4rem;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 10px;
+  background-color: var(--bg-surface-subtle);
+  margin-bottom: 0.85rem;
+}
+
+.empty-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-header-icon);
+  color: var(--brand-primary);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state-title {
+  color: var(--text-main) !important;
+  margin-bottom: 0.25rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.empty-state-desc {
+  color: var(--text-muted) !important;
+  font-size: 0.875rem;
+  margin: 0 auto;
+}
+
+.stCode, pre, code {
+  background-color: var(--code-bg) !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px !important;
+}
+
+/* ---------------------------------------------------------------------
+   7. Buttons & Popovers
+   --------------------------------------------------------------------- */
+button[data-testid="stBaseButton-primary"] {
+  background-color: var(--brand-primary) !important;
+  border: 1px solid var(--brand-primary) !important;
+  color: var(--text-inverse) !important;
+}
+
+button[data-testid="stBaseButton-primary"]:hover {
+  background-color: var(--brand-hover) !important;
+  border-color: var(--brand-hover) !important;
+}
+
+button[data-testid="stBaseButton-primary"] * {
+  color: var(--text-inverse) !important;
+}
+
+button[data-testid="stBaseButton-secondary"],
+div[data-testid="stPopover"] > button,
+div[data-testid="stPopover"] button {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-main) !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+button[data-testid="stBaseButton-secondary"]:hover,
+div[data-testid="stPopover"] button:hover {
+  background-color: var(--bg-surface-subtle) !important;
+  border-color: var(--brand-primary) !important;
+  color: var(--brand-primary) !important;
+}
+
+button[data-testid="stBaseButton-secondary"] *,
+div[data-testid="stPopover"] button * {
+  color: inherit !important;
+}
+
+button:disabled, button[disabled] {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+/* Tooltip / Help Icons (Clean Outline, NEVER Solid Black) */
+div[data-testid="stTooltipIcon"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  vertical-align: middle !important;
+}
+
+div[data-testid="stTooltipIcon"] button {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-muted) !important;
+  padding: 0 !important;
+  margin: 0 0 0 0.35rem !important;
+  opacity: 0.85 !important;
+  cursor: help !important;
+}
+
+div[data-testid="stTooltipIcon"] button:hover {
+  color: var(--brand-primary) !important;
+  opacity: 1 !important;
+}
+
+div[data-testid="stTooltipIcon"] svg {
+  width: 15px !important;
+  height: 15px !important;
+  fill: none !important; /* CRITICAL: Prevents solid black circle blob */
+  stroke: currentColor !important;
+  color: inherit !important;
+}
+
+div[data-testid="stTooltipIcon"] svg circle,
+div[data-testid="stTooltipIcon"] svg path {
+  fill: none !important;
+  stroke: currentColor !important;
+}
+
+/* ---------------------------------------------------------------------
+   8. Form Inputs & Selectboxes (Scoped Themes)
+   --------------------------------------------------------------------- */
+[data-testid="stTextInput"] div,
+[data-testid="stNumberInput"] div,
+[data-testid="stTextArea"] div,
+div[data-baseweb="input"],
+div[data-baseweb="base-input"],
+[data-testid="stSelectbox"] div,
+div[data-baseweb="select"] > div {
+  background-color: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text-main) !important;
+  border-radius: 8px !important;
+}
+
+[data-testid="stTextInput"] div:focus-within,
+div[data-baseweb="select"] > div:focus-within {
+  border-color: var(--brand-primary) !important;
+  box-shadow: 0 0 0 1px var(--brand-primary) !important;
+}
+
+input, textarea {
+  background-color: transparent !important;
+  color: var(--text-main) !important;
+  -webkit-text-fill-color: var(--text-main) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted) !important;
+  -webkit-text-fill-color: var(--text-muted) !important;
+  opacity: 0.8 !important;
+}
+
+div[data-baseweb="select"] span {
+  color: var(--text-main) !important;
+}
+
+div[data-baseweb="select"] svg {
+  color: var(--text-muted) !important;
+  fill: var(--text-muted) !important;
+}
+
+/* Selectbox Dropdown Menu Portal */
+[data-baseweb="menu"],
+[data-baseweb="popover"] > div,
+ul[role="listbox"] {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-main) !important;
+  box-shadow: var(--shadow-card) !important;
+  border-radius: 8px !important;
+}
+
+li[role="option"] {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-main) !important;
+}
+
+li[role="option"]:hover {
+  background-color: var(--bg-surface-subtle) !important;
+  color: var(--brand-primary) !important;
+}
+
+li[aria-selected="true"] {
+  background-color: var(--bg-surface-subtle) !important;
+  color: var(--brand-primary) !important;
+  font-weight: 600 !important;
+}
+
+/* Radio & Slider Controls */
+div[data-testid="stRadio"] [role="radiogroup"] {
+  gap: 1.25rem !important;
+  align-items: center !important;
+}
+
+div[data-testid="stRadio"] label,
+div[data-testid="stRadio"] label * {
+  color: var(--text-main) !important;
+  font-size: 0.9rem !important;
+}
+
+div[data-testid="stSlider"] div[data-testid="stThumbValue"] {
+  color: var(--brand-primary) !important;
+  font-weight: 600 !important;
+  font-size: 0.85rem !important;
+}
+
+div[data-testid="stPopoverBody"],
+div[data-testid="stAlert"] {
+  background-color: var(--bg-surface) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-main) !important;
+}
+
+div[data-testid="stDataFrame"],
+body:has(.theme-marker-dark) [data-testid="stDataFrame"] {
+  border: 1px solid var(--border-color) !important;
+  border-radius: 8px !important;
+}
+
+/* ---------------------------------------------------------------------
+   9. Responsive Breakpoints
+   --------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .app-title {
+    font-size: 1.1rem !important;
+  }
+  .app-header-icon {
+    width: 30px;
+    height: 30px;
+  }
+}

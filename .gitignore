@@ -49,3 +49,6 @@ Thumbs.db
 # Large Data files (GloVe embeddings > 100MB)
 data/*.txt
 !data/.gitkeep
+
+# Documentation / Local docs
+docs/
