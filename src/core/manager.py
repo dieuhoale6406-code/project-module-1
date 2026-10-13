@@ -448,7 +448,7 @@ class VectorEngineManager:
             try:
                 module_obj = importlib.import_module(f".algorithms.{module}", package=__package__)
                 algorithm_cls = getattr(module_obj, class_name)
-            except (ImportError, AttributeError) as exc:
+            except Exception as exc:  # noqa: BLE001 - isolate unfinished teammate modules
                 self._unavailable_reason[name] = f"{type(exc).__name__}: {exc}"
                 continue
             self.register_algorithm(name, algorithm_cls, metrics)
