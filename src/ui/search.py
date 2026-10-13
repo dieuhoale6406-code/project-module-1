@@ -510,7 +510,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     except Exception:
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Trạng thái": "Chưa sẵn sàng",
+                            "Trạng thái": "Lỗi khi tìm kiếm",
                             "Thời gian tìm kiếm (ms)": "—",
                             "Recall@K": "—",
                         })
