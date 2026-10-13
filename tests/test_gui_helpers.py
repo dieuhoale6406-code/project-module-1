@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from streamlit.testing.v1 import AppTest
+
 src_dir = Path(__file__).resolve().parent.parent / "src"
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
@@ -166,6 +168,65 @@ class TestGuiHelpers(unittest.TestCase):
         self.assertEqual(flash, ("success", "Thao tác thành công"))
         # Consuming again returns None
         self.assertIsNone(consume_flash_message())
+
+
+class TestSearchResultCache(unittest.TestCase):
+    def _run_search(self, button_label):
+        app = AppTest.from_string("""
+import streamlit as st
+from core.manager import VectorEngineManager
+from ui.search import render_search_tab
+
+if "manager" not in st.session_state:
+    manager = VectorEngineManager()
+    manager.add_record("apple", [1.0, 0.0], track_undo=False)
+    manager.add_record("banana", [0.0, 1.0], track_undo=False)
+    st.session_state["manager"] = manager
+render_search_tab(st.session_state["manager"])
+""").run()
+        self.assertEqual(len(app.exception), 0)
+        self.assertIsNone(app.session_state["single_search_result"])
+        self.assertIsNone(app.session_state["compare_search_result"])
+        app.text_input[0].set_value("apple")
+        next(button for button in app.button if button.label == button_label).click().run()
+        self.assertEqual(len(app.exception), 0)
+        result_key = (
+            "single_search_result" if button_label == "Tìm kiếm" else "compare_search_result"
+        )
+        self.assertTrue(app.session_state[result_key])
+        return app, result_key
+
+    def test_mutations_clear_search_and_comparison_results(self):
+        for mutation in ("update", "delete_add", "delete_all"):
+            for button_label in ("Tìm kiếm", "So sánh 5 thuật toán"):
+                with self.subTest(mutation=mutation, button=button_label):
+                    app, _ = self._run_search(button_label)
+                    manager = app.session_state["manager"]
+                    if mutation == "update":
+                        manager.update_record("apple", [0.5, 0.5])
+                    elif mutation == "delete_add":
+                        manager.delete_record("apple")
+                        manager.add_record("cherry", [0.5, 0.5])
+                    else:
+                        manager.delete_record("apple")
+                        manager.delete_record("banana")
+                    app.run()
+                    self.assertEqual(len(app.exception), 0)
+                    self.assertIsNone(app.session_state["single_search_result"])
+                    self.assertIsNone(app.session_state["compare_search_result"])
+                    self.assertEqual(
+                        app.session_state["_last_dataset_version"], manager.mutation_version
+                    )
+
+    def test_unchanged_dataset_keeps_cached_results(self):
+        for button_label in ("Tìm kiếm", "So sánh 5 thuật toán"):
+            with self.subTest(button=button_label):
+                app, result_key = self._run_search(button_label)
+                cached = app.session_state[result_key]
+                app.session_state["manager"].build_linear_index()
+                app.run()
+                self.assertEqual(len(app.exception), 0)
+                self.assertEqual(app.session_state[result_key], cached)
 
 
 if __name__ == "__main__":

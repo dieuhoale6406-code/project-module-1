@@ -264,6 +264,12 @@ def _render_benchmark_section() -> None:
 
 def render_search_tab(manager: VectorEngineManager) -> None:
     """Render the complete Search & Comparison tab matching Tab 1 visual language."""
+    # Invalidate cached results if dataset was mutated, including when empty.
+    if st.session_state.get("_last_dataset_version") != manager.mutation_version:
+        st.session_state["single_search_result"] = None
+        st.session_state["compare_search_result"] = None
+        st.session_state["_last_dataset_version"] = manager.mutation_version
+
     if manager.record_count == 0:
         _, center_col, _ = st.columns([1, 2.5, 1])
         with center_col:
@@ -285,16 +291,6 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                 unsafe_allow_html=True,
             )
         return
-
-    # Invalidate cached results if dataset was mutated
-    if (
-        st.session_state.get("_last_dataset_count") != manager.record_count
-        or st.session_state.get("_last_dataset_dim") != manager.dimension
-    ):
-        st.session_state["single_search_result"] = None
-        st.session_state["compare_search_result"] = None
-        st.session_state["_last_dataset_count"] = manager.record_count
-        st.session_state["_last_dataset_dim"] = manager.dimension
 
     # 1. Shared Query Controls (Top Panel)
     col_alg, col_metric, col_topk = st.columns([2.5, 2.5, 2])

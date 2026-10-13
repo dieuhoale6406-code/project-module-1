@@ -56,6 +56,7 @@ class VectorEngineManager:
         self._records: Dict[str, VectorRecord] = {}
         self._label_to_id: Dict[str, str] = {}
         self._dimension: Optional[int] = None
+        self._mutation_version: int = 0
 
         self._index_cache: Dict[Tuple[str, str], _CachedIndex] = {}
         self._rebuild_count: int = 0
@@ -96,6 +97,11 @@ class VectorEngineManager:
     def dimension(self) -> int:
         """Dimensionality of the vector space (0 if empty)."""
         return self._dimension if self._dimension is not None else 0
+
+    @property
+    def mutation_version(self) -> int:
+        """Monotonically increasing version of successful dataset mutations."""
+        return self._mutation_version
 
     @property
     def is_stale(self) -> bool:
@@ -289,7 +295,8 @@ class VectorEngineManager:
         return entry.build_time_ms if entry is not None else None
 
     def _invalidate_indexes(self) -> None:
-        """Invalidate all cached indexes when dataset changes."""
+        """Advance the dataset version and invalidate all cached indexes."""
+        self._mutation_version += 1
         self._index_cache.clear()
 
     def _build_and_cache(

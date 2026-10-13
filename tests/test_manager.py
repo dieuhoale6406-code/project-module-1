@@ -39,6 +39,67 @@ class TestVectorEngineManager(unittest.TestCase):
     def setUp(self) -> None:
         self.manager = VectorEngineManager()
 
+    def test_mutation_version_tracks_crud_and_each_undo(self) -> None:
+        self.manager.undo_stack = MockLinkedStack()
+        self.assertEqual(self.manager.mutation_version, 0)
+        mutations = (
+            lambda: self.manager.add_record("apple", [1.0, 0.0]),
+            lambda: self.manager.update_record("apple", [0.0, 1.0]),
+            lambda: self.manager.delete_record("apple"),
+            self.manager.undo,  # Restore the deletion.
+            self.manager.undo,  # Restore the old coordinates.
+            self.manager.undo,  # Remove the addition.
+        )
+        for version, mutate in enumerate(mutations, start=1):
+            with self.subTest(version=version):
+                self.assertTrue(mutate())
+                self.assertEqual(self.manager.mutation_version, version)
+        self.assertEqual(self.manager.record_count, 0)
+
+    def test_mutation_version_tracks_changes_without_undo_history(self) -> None:
+        manager = VectorEngineManager(
+            [VectorRecord("A", "apple", [1.0, 0.0])],
+            undo_stack=MockLinkedStack(),
+        )
+        self.assertEqual(manager.mutation_version, 1)
+        manager.update_record("apple", [0.0, 1.0], track_undo=False)
+        self.assertEqual(manager.mutation_version, 2)
+        manager.delete_record("apple", track_undo=False)
+        self.assertEqual(manager.mutation_version, 3)
+        manager.add_record("banana", [1.0, 1.0], track_undo=False)
+        self.assertEqual(manager.mutation_version, 4)
+        self.assertEqual((manager.record_count, manager.dimension), (1, 2))
+        self.assertTrue(manager.undo_stack.is_empty())
+
+    def test_mutation_version_unchanged_after_rejected_operations(self) -> None:
+        self.manager.undo_stack = MockLinkedStack()
+        self.manager.add_record("apple", [1.0, 0.0])
+        version = self.manager.mutation_version
+        self.assertFalse(self.manager.delete_record("missing"))
+        self.assertFalse(self.manager.update_record("missing", [0.0, 1.0]))
+        with self.assertRaises(ValueError):
+            self.manager.add_record("apple", [0.0, 1.0])
+        with self.assertRaises(ValueError):
+            self.manager.update_record("apple", [1.0])
+        self.assertEqual(self.manager.mutation_version, version)
+
+        self.manager.update_record("apple", [0.0, 1.0], track_undo=False)
+        version = self.manager.mutation_version
+        self.assertIsNone(self.manager.undo())  # The original ADD now conflicts.
+        self.assertEqual(self.manager.mutation_version, version)
+        self.manager.undo_stack = MockLinkedStack()
+        self.assertIsNone(self.manager.undo())
+        self.assertEqual(self.manager.mutation_version, version)
+
+    def test_mutation_version_unchanged_after_reads_and_index_builds(self) -> None:
+        self.manager.add_record("apple", [1.0, 0.0])
+        version = self.manager.mutation_version
+        self.manager.get_record("apple")
+        self.manager.get_all_records()
+        self.manager.build_linear_index()
+        self.manager.search_linear([1.0, 0.0], top_k=1)
+        self.assertEqual(self.manager.mutation_version, version)
+
     # 1. Khởi tạo Manager
     def test_init_empty(self) -> None:
         self.assertEqual(self.manager.record_count, 0)
