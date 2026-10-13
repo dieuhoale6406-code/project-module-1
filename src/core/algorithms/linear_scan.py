@@ -2,6 +2,7 @@ import math
 from typing import Any, List, Optional, Tuple
 
 from ..metrics import cosine_similarity, euclidean_distance
+from ..structures.heap import BoundedMaxHeap
 from .base import BaseVectorIndex
 
 
@@ -11,8 +12,8 @@ class LinearScanIndex(BaseVectorIndex):
 
     Complexity:
         - Build: O(N) memory copy and dimension validation.
-        - Search: O(N * D + N log N) distance computations and full sorting.
-    Auxiliary search memory: O(N).
+        - Search: O(N * D + N log K) distance computations and bounded max-heap maintenance.
+    Auxiliary search memory: O(K).
     Role: Absolute ground truth baseline (100% recall).
     """
 
@@ -75,7 +76,7 @@ class LinearScanIndex(BaseVectorIndex):
                     "Không thể tính Cosine Similarity với vector truy vấn có chuẩn độ dài bằng 0 (Zero Vector)."
                 )
 
-        candidates = []
+        heap = BoundedMaxHeap(capacity=top_k)
         for record in self.records:
             rec_values = record.values
             if is_cosine:
@@ -88,9 +89,6 @@ class LinearScanIndex(BaseVectorIndex):
             else:
                 dist = euclidean_distance(query_values, rec_values)
 
-            # Sort key (distance, record.id) for deterministic tie-breaking.
-            rec_id = str(getattr(record, "id", ""))
-            candidates.append((dist, rec_id, record))
+            heap.push(dist, record)
 
-        candidates.sort(key=lambda item: (item[0], item[1]))
-        return [(item[2], item[0]) for item in candidates[:top_k]]
+        return heap.get_sorted_results()

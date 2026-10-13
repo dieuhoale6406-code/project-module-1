@@ -254,6 +254,62 @@ class TestCoreHardeningRegression(unittest.TestCase):
         self.assertEqual(len(mgr._records), 0)
         self.assertEqual(len(mgr._label_to_id), 0)
 
+    # 10. Undo ADD bị từ chối an toàn nếu bản ghi bị chỉnh sửa ngoài luồng (track_undo=False)
+    def test_undo_add_refused_when_record_modified_out_of_band(self) -> None:
+        for stack_cls in (MockLinkedStackWithPeek, MockLinkedStackNoPeek):
+            with self.subTest(stack=stack_cls.__name__):
+                mgr = VectorEngineManager()
+                mgr.undo_stack = stack_cls()
+
+                # Thêm bản ghi 'cat' có tọa độ [1.0, 1.0] (được ghi vào Undo)
+                mgr.add_record("cat", [1.0, 1.0], record_id="C1")
+
+                # Chỉnh sửa 'cat' thành [9.0, 9.0] mà không ghi Undo (track_undo=False)
+                mgr.update_record("cat", [9.0, 9.0], track_undo=False)
+
+                # Undo ADD phải bị từ chối an toàn vì trạng thái bản ghi không còn khớp với thao tác ADD
+                stack_size_before = len(mgr.undo_stack._items)
+                self.assertIsNone(mgr.undo())
+
+                # Bản ghi không bị xóa âm thầm: 'cat' vẫn tồn tại với tọa độ [9.0, 9.0]
+                self.assertEqual(mgr.record_count, 1)
+                self.assertEqual(mgr.get_record("cat").values, [9.0, 9.0])
+                self.assertEqual(len(mgr.undo_stack._items), stack_size_before)
+
+                # Nếu đưa tọa độ 'cat' trở lại đúng trạng thái đã ADD [1.0, 1.0] (track_undo=False),
+                # thì Undo ADD sẽ thành công xóa bản ghi
+                mgr.update_record("cat", [1.0, 1.0], track_undo=False)
+                self.assertIsNotNone(mgr.undo())
+                self.assertEqual(mgr.record_count, 0)
+                self.assertIsNone(mgr.get_record("cat"))
+
+    # 11. Undo UPDATE bị từ chối an toàn nếu bản ghi bị chỉnh sửa ngoài luồng (track_undo=False)
+    def test_undo_update_refused_when_record_modified_out_of_band(self) -> None:
+        for stack_cls in (MockLinkedStackWithPeek, MockLinkedStackNoPeek):
+            with self.subTest(stack=stack_cls.__name__):
+                mgr = VectorEngineManager()
+                mgr.undo_stack = stack_cls()
+
+                mgr.add_record("dog", [1.0, 1.0], record_id="D1")
+                # Update 'dog' thành [2.0, 2.0] (được ghi vào Undo)
+                mgr.update_record("dog", [2.0, 2.0])
+
+                # Chỉnh sửa 'dog' thành [5.0, 5.0] mà không ghi Undo (track_undo=False)
+                mgr.update_record("dog", [5.0, 5.0], track_undo=False)
+
+                # Undo UPDATE phải bị từ chối an toàn vì trạng thái hiện tại không còn khớp với kết quả UPDATE đã ghi
+                stack_size_before = len(mgr.undo_stack._items)
+                self.assertIsNone(mgr.undo())
+
+                # Dữ liệu mới không bị ghi đè: 'dog' vẫn giữ tọa độ [5.0, 5.0]
+                self.assertEqual(mgr.get_record("dog").values, [5.0, 5.0])
+                self.assertEqual(len(mgr.undo_stack._items), stack_size_before)
+
+                # Nếu đưa tọa độ 'dog' về đúng [2.0, 2.0], Undo UPDATE sẽ phục hồi lại [1.0, 1.0]
+                mgr.update_record("dog", [2.0, 2.0], track_undo=False)
+                self.assertIsNotNone(mgr.undo())
+                self.assertEqual(mgr.get_record("dog").values, [1.0, 1.0])
+
 
 if __name__ == "__main__":
     unittest.main()

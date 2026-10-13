@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 try:
-    from core.structures import LinkedQueue, LinkedStack
+    from core.structures import LinkedStack
     from models.action import ActionRecord
     from models.record import VectorRecord
 except ImportError:
-    from .structures import LinkedQueue, LinkedStack
+    from .structures import LinkedStack
     from ..models.action import ActionRecord
     from ..models.record import VectorRecord
 
@@ -40,34 +40,6 @@ class _CachedIndex:
     index: BaseVectorIndex
     params: Dict[str, Any]
     build_time_ms: float
-
-
-class BaseManager:
-    """Legacy base manager preserved for backward compatibility."""
-
-    def __init__(self, storage: Optional[Any] = None) -> None:
-        self.storage = storage
-        self.undo_Linkedstack: LinkedStack = LinkedStack()
-        self.task_Linkedqueue: LinkedQueue = LinkedQueue()
-        self.items: Dict[str, Any] = {}
-
-    def load(self) -> None:
-        raise NotImplementedError
-
-    def save(self) -> bool:
-        raise NotImplementedError
-
-    def push_undo(self, action: Dict[str, Any]) -> None:
-        raise NotImplementedError
-
-    def pop_undo(self) -> Optional[Dict[str, Any]]:
-        raise NotImplementedError
-
-    def enLinkedqueue_task(self, task_data: Any) -> None:
-        raise NotImplementedError
-
-    def deLinkedqueue_task(self) -> Optional[Any]:
-        raise NotImplementedError
 
 
 class VectorEngineManager:
@@ -262,7 +234,9 @@ class VectorEngineManager:
         self._invalidate_indexes()
 
         if track_undo:
-            self._push_undo_action("UPDATE", old_rec.label, {"old_record": old_rec})
+            self._push_undo_action(
+                "UPDATE", old_rec.label, {"old_record": old_rec, "new_record": updated_rec}
+            )
         return True
 
     def build_index(
@@ -577,6 +551,13 @@ class VectorEngineManager:
                 _rollback_and_abort()
                 return None
 
+            target_rec = self._records[expected_id]
+            if payload_rec is not None and (
+                target_rec.values != payload_rec.values or target_rec.label != payload_rec.label
+            ):
+                _rollback_and_abort()
+                return None
+
             self._records.pop(expected_id, None)
             self._label_to_id.pop(target, None)
 
@@ -613,6 +594,7 @@ class VectorEngineManager:
 
         elif act_type == "UPDATE":
             old_rec: Optional[VectorRecord] = action.payload.get("old_record") if action.payload else None
+            new_rec: Optional[VectorRecord] = action.payload.get("new_record") if action.payload else None
             if old_rec is None:
                 _rollback_and_abort()
                 return None
@@ -631,6 +613,12 @@ class VectorEngineManager:
                 return None
 
             if self._dimension is not None and old_rec.dimension != self._dimension:
+                _rollback_and_abort()
+                return None
+
+            if new_rec is not None and (
+                current_rec.values != new_rec.values or current_rec.label != new_rec.label
+            ):
                 _rollback_and_abort()
                 return None
 
