@@ -48,6 +48,13 @@ def parse_glove_line(line: str, expected_dim: int = 50) -> Optional[Tuple[str, L
     if len(tokens) <= expected_dim:
         return None
 
+    # Reject lines with more numeric coordinates than expected (dimension mismatch).
+    try:
+        float(tokens[-expected_dim - 1])
+        return None
+    except ValueError:
+        pass
+
     label = " ".join(tokens[:-expected_dim]).strip().lower()
     if not label:
         return None
