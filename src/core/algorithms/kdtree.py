@@ -312,7 +312,7 @@ class KDTreeIndex(BaseVectorIndex):
             max_dist = heap.max_distance
 
             # Plane pruning 
-            if abs(diff) < max_dist:
+            if abs(diff) <= max_dist:
                 _search_node(far_node)
 
         # Bắt đầu tìm kiếm từ root
