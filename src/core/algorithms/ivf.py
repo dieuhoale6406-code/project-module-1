@@ -113,17 +113,40 @@ class IVFIndex(BaseVectorIndex):
     def build(self, records: List[Any]) -> None:
         """
         Xây dựng bảng chỉ mục đảo (Inverted Lists).
-        
-        Các bước thực hiện gợi ý:
-            1. Gọi `self._train_kmeans(records)` để tìm ra `self.num_clusters` tâm cụm.
-            2. Khởi tạo danh sách chỉ mục đảo rỗng cho từng cụm:
-               self.inverted_lists = {c_idx: [] for c_idx in range(len(self.centroids))}.
-            3. Duyệt qua từng bản ghi `record` trong `records`:
-               a. Tìm chỉ số cụm `best_c` có tâm cụm gần `record.values` nhất.
-               b. Đưa bản ghi vào danh sách chỉ mục đảo của cụm đó:
-                  self.inverted_lists[best_c].append(record).
         """
-        raise NotImplementedError("Cài đặt dựng chỉ mục đảo IVF.")
+        if not records:
+            self.centroids = []
+            self.inverted_lists = {}
+            return
+
+        # 1. Kiểm tra tính hợp lệ và đồng nhất về số chiều của các vector
+        for idx, rec in enumerate(records):
+            rec_vals = getattr(rec, "values", None)
+            if rec_vals is None or len(rec_vals) != self.dimension:
+                actual_dim = len(rec_vals) if rec_vals is not None else 0
+                raise ValueError(
+                    f"Vector tại vị trí {idx} có số chiều {actual_dim}, "
+                    f"không khớp với số chiều của chỉ mục ({self.dimension})."
+                )
+
+        # 2. Huấn luyện phân cụm K-Means để xác định các tâm cụm
+        self._train_kmeans(records)
+
+        # 3. Khởi tạo danh sách chỉ mục đảo rỗng cho từng cụm
+        num_centroids = len(self.centroids)
+        self.inverted_lists = {c_idx: [] for c_idx in range(num_centroids)}
+
+        # 4. Phân phối từng bản ghi vào danh sách chỉ mục đảo của cụm gần nhất
+        for rec in records:
+            rec_vals = rec.values
+            best_c = 0
+            min_sq_dist = float("inf")
+            for c_idx, centroid in enumerate(self.centroids):
+                sq_dist = self._squared_distance(rec_vals, centroid)
+                if sq_dist < min_sq_dist:
+                    min_sq_dist = sq_dist
+                    best_c = c_idx
+            self.inverted_lists[best_c].append(rec)
 
     def search(self, query_values: List[float], top_k: int) -> List[Tuple[Any, float]]:
         """
