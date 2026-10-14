@@ -1,4 +1,3 @@
-import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st

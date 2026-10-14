@@ -173,7 +173,13 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                         loaded, skipped = load_glove_subset(
                             manager, "data/vectors.txt", limit=1000, expected_dim=50
                         )
-                    set_flash_message(f"Đã nạp thành công {loaded:,} từ vựng mẫu.", "success")
+                    if loaded == 0 and skipped > 0:
+                        set_flash_message(
+                            f"Không nạp được từ vựng nào ({skipped:,} dòng bị bỏ qua do không khớp số chiều hoặc sai định dạng).",
+                            level="warning",
+                        )
+                    else:
+                        set_flash_message(f"Đã nạp thành công {loaded:,} từ vựng (bỏ qua {skipped:,}).", level="success")
                     st.rerun()
                 except Exception:
                     st.error("Không thể đọc tệp dữ liệu mẫu. Vui lòng kiểm tra lại tệp.")

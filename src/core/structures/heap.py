@@ -76,7 +76,8 @@ class BoundedMaxHeap:
             raise ValueError(f"distance must be a finite number, got: {distance}")
 
         dist = float(distance)
-        rec_id = str(item_id) if item_id is not None else str(item.id)
+        rec_id = str(item_id) if item_id is not None else str(getattr(item, "id", item))
+
         entry = (dist, rec_id, item)
 
         if len(self._heap) < self.capacity:
