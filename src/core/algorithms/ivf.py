@@ -1,6 +1,9 @@
 import math
 import random
 from typing import Any, Dict, List, Optional, Tuple
+
+from ..metrics import euclidean_distance
+from ..structures.heap import BoundedMaxHeap
 from .base import BaseVectorIndex
 
 
@@ -151,15 +154,47 @@ class IVFIndex(BaseVectorIndex):
     def search(self, query_values: List[float], top_k: int) -> List[Tuple[Any, float]]:
         """
         Tìm kiếm Top-K vector thông qua cơ chế duyệt nprobe cụm gần nhất.
-        
-        Các bước thực hiện gợi ý:
-            1. Tính khoảng cách Euclidean từ `query_values` tới tất cả `self.centroids`.
-            2. Sắp xếp các centroid theo khoảng cách tăng dần, chọn ra `self.nprobe` centroid gần nhất.
-            3. Gom toàn bộ vector nằm trong danh sách chỉ mục đảo của `nprobe` centroid này:
-               candidates = []
-               for c_idx in nearest_centroids:
-                   candidates.extend(self.inverted_lists.get(c_idx, []))
-            4. Quét tuần tự tính khoảng cách chính xác giữa `query_values` và từng vector trong `candidates`.
-            5. Sắp xếp danh sách ứng viên và trả về đúng `top_k` kết quả tối ưu nhất.
         """
-        raise NotImplementedError("Cài đặt tìm kiếm nprobe cụm trên IVF.")
+        if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+            raise ValueError(f"top_k phải là số nguyên dương (> 0), nhận được: {top_k}.")
+
+        if not query_values:
+            raise ValueError("query_values không được rỗng.")
+
+        for val in query_values:
+            if not math.isfinite(val):
+                raise ValueError("query_values chứa giá trị không hợp lệ (NaN hoặc Infinity).")
+
+        if len(query_values) != self.dimension:
+            raise ValueError(
+                f"Số chiều của query ({len(query_values)}) không khớp với số chiều của chỉ mục ({self.dimension})."
+            )
+
+        if not self.centroids or not self.inverted_lists:
+            return []
+
+        # 1. Tính khoảng cách tới tất cả các centroid và chọn ra nprobe cụm gần nhất
+        centroid_dists = [
+            (self._squared_distance(query_values, c), c_idx)
+            for c_idx, c in enumerate(self.centroids)
+        ]
+        centroid_dists.sort(key=lambda item: item[0])
+
+        eff_nprobe = min(self.nprobe, len(self.centroids))
+        selected_clusters = [c_idx for _, c_idx in centroid_dists[:eff_nprobe]]
+
+        # 2. Gom toàn bộ vector ứng viên từ nprobe cụm này
+        candidates: List[Any] = []
+        for c_idx in selected_clusters:
+            candidates.extend(self.inverted_lists.get(c_idx, []))
+
+        if not candidates:
+            return []
+
+        # 3. Sử dụng BoundedMaxHeap để lọc ra đúng Top-K kết quả gần nhất
+        heap = BoundedMaxHeap(capacity=top_k)
+        for record in candidates:
+            dist = euclidean_distance(query_values, record.values)
+            heap.push(dist, record)
+
+        return heap.get_sorted_results()
