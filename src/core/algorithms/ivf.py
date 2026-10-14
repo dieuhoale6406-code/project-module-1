@@ -1,5 +1,6 @@
+import math
 import random
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from .base import BaseVectorIndex
 
 
@@ -10,34 +11,104 @@ class IVFIndex(BaseVectorIndex):
     Độ phức tạp: Build O(I * N * C * d), Search O(C * d + nprobe * (N/C) * d).
     """
 
-    def __init__(self, dimension: int, num_clusters: int = 8, nprobe: int = 2) -> None:
+    def __init__(
+        self,
+        dimension: int,
+        num_clusters: int = 8,
+        nprobe: int = 2,
+        seed: Optional[int] = 42,
+        metric: str = "euclidean",
+    ) -> None:
         super().__init__(name="IVF-Flat")
+        if dimension <= 0:
+            raise ValueError(f"dimension phải là số nguyên dương, nhận: {dimension}")
+        if num_clusters <= 0:
+            raise ValueError(f"num_clusters phải là số nguyên dương, nhận: {num_clusters}")
+        if nprobe <= 0:
+            raise ValueError(f"nprobe phải là số nguyên dương, nhận: {nprobe}")
+
         self.dimension = dimension
         self.num_clusters = num_clusters
         self.nprobe = nprobe
+        self.seed = seed
+        self.metric = metric
         # Danh sách tọa độ tâm cụm (centroids): List[List[float]]
         self.centroids: List[List[float]] = []
         # Danh sách chỉ mục đảo: cluster_idx -> List[VectorRecord]
         self.inverted_lists: Dict[int, List[Any]] = {}
 
+    @staticmethod
+    def _squared_distance(v1: List[float], v2: List[float]) -> float:
+        """Tính bình phương khoảng cách Euclidean giữa hai vector để tối ưu so sánh."""
+        return sum((x - y) ** 2 for x, y in zip(v1, v2))
+
     def _train_kmeans(self, records: List[Any], max_iter: int = 15) -> None:
         """
         Cài đặt thuật toán K-Means thuần túy (không dùng numpy/scikit-learn).
-        
-        Các bước thực hiện gợi ý:
-            1. Khởi tạo K tâm cụm ban đầu: Chọn ngẫu nhiên `self.num_clusters` vector từ `records`.
-            2. Vòng lặp tối ưu (lặp từ 1 đến `max_iter`):
-               a. Tạo K cụm rỗng: clusters = [[] for _ in range(self.num_clusters)].
-               b. Gán từng vector vào tâm cụm gần nhất (dùng khoảng cách Euclidean):
-                  - Với mỗi record, tìm centroid có khoảng cách nhỏ nhất, đưa record vào cụm đó.
-               c. Cập nhật lại tọa độ các tâm cụm (Centroid Update):
-                  - Với mỗi cụm có chứa vector: Tính trung bình cộng tọa độ các vector trong cụm:
-                    new_centroid[j] = sum(v[j] for v in cluster) / len(cluster).
-                  - Nếu cụm rỗng: giữ nguyên centroid cũ hoặc gán lại ngẫu nhiên.
-               d. Kiểm tra hội tụ (nếu tọa độ centroids thay đổi cực nhỏ thì dừng sớm).
-            3. Lưu danh sách tâm cụm cuối cùng vào `self.centroids`.
         """
-        raise NotImplementedError("Cài đặt thuật toán phân cụm K-Means cho IVF.")
+        if not records:
+            self.centroids = []
+            return
+
+        num_records = len(records)
+        # Nếu số bản ghi ít hơn hoặc bằng số cụm mong muốn, lấy tất cả làm tâm cụm
+        if num_records <= self.num_clusters:
+            self.centroids = [list(rec.values) for rec in records]
+            return
+
+        rng = random.Random(self.seed) if self.seed is not None else random.Random()
+
+        # 1. Khởi tạo K tâm cụm ban đầu: Chọn ngẫu nhiên `num_clusters` vector từ `records`
+        initial_records = rng.sample(records, self.num_clusters)
+        self.centroids = [list(rec.values) for rec in initial_records]
+
+        dim = self.dimension
+
+        # 2. Vòng lặp tối ưu hóa K-Means
+        for _ in range(max_iter):
+            # a. Tạo K cụm rỗng
+            clusters: List[List[Any]] = [[] for _ in range(self.num_clusters)]
+
+            # b. Gán từng vector vào tâm cụm gần nhất
+            for rec in records:
+                rec_vals = rec.values
+                best_c = 0
+                min_sq_dist = float("inf")
+                for c_idx, centroid in enumerate(self.centroids):
+                    sq_dist = self._squared_distance(rec_vals, centroid)
+                    if sq_dist < min_sq_dist:
+                        min_sq_dist = sq_dist
+                        best_c = c_idx
+                clusters[best_c].append(rec)
+
+            # c. Cập nhật lại tọa độ các tâm cụm (Centroid Update)
+            new_centroids: List[List[float]] = []
+            total_shift = 0.0
+
+            for c_idx in range(self.num_clusters):
+                cluster = clusters[c_idx]
+                c_size = len(cluster)
+                if c_size > 0:
+                    # Tính trung bình cộng tọa độ các vector trong cụm
+                    updated_c = [
+                        sum(rec.values[d] for rec in cluster) / c_size
+                        for d in range(dim)
+                    ]
+                else:
+                    # Cụm rỗng: gán lại ngẫu nhiên từ một vector trong records
+                    random_rec = rng.choice(records)
+                    updated_c = list(random_rec.values)
+
+                # Đo độ dịch chuyển của tâm cụm này
+                shift = math.sqrt(self._squared_distance(self.centroids[c_idx], updated_c))
+                total_shift += shift
+                new_centroids.append(updated_c)
+
+            self.centroids = new_centroids
+
+            # d. Kiểm tra hội tụ: nếu tổng độ dịch chuyển cực nhỏ (< 1e-4) thì dừng sớm
+            if total_shift < 1e-4:
+                break
 
     def build(self, records: List[Any]) -> None:
         """
