@@ -41,10 +41,28 @@ def cosine_similarity(v1: List[float], v2: List[float], norm1: float, norm2: flo
     return sim
 
 
-def euclidean_distance(v1: List[float], v2: List[float]) -> float:
-    """Compute Euclidean distance between two vectors."""
-    _validate_vectors(v1, v2)
-    return math.sqrt(sum((x - y) ** 2 for x, y in zip(v1, v2)))
+def euclidean_distance(
+    v1: List[float],
+    v2: List[float],
+    *,
+    validate: bool = True,
+) -> float:
+    """Compute Euclidean distance between two vectors.
+
+    Args:
+        v1, v2: Vectors to compare.
+        validate: If True (default), validates that vectors are non-empty,
+            equal in length, and contain finite values before computing.
+            Set to False only in hot-paths where inputs are already trusted
+            (e.g. inside search loops where data was validated at build time).
+    """
+    if validate:
+        _validate_vectors(v1, v2)
+    s = 0.0
+    for a, b in zip(v1, v2):
+        d = a - b
+        s += d * d
+    return math.sqrt(s)
 
 
 def dot_product(v1: List[float], v2: List[float]) -> float:
