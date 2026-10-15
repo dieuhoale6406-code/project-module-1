@@ -11,7 +11,6 @@ class StackNode:
 
 class LinkedStack:
     """
-    Khung sườn LinkedStack.
     Nhiệm vụ: Cài đặt ngăn xếp tự xây dựng bằng danh sách liên kết đơn (Linked List).
     Mục đích: Lưu trữ lịch sử thao tác để phục vụ chức năng Undo.
     """
@@ -28,12 +27,21 @@ class LinkedStack:
 
     def push(self, item: Any) -> None:
         """Đẩy một phần tử vào đỉnh ngăn xếp."""
-        raise NotImplementedError("Cài đặt thao tác push.")
+        new_node = StackNode(item, self.top)
+        self.top = new_node
+        self._size += 1
 
     def pop(self) -> Any:
         """Lấy phần tử ra khỏi đỉnh ngăn xếp."""
-        raise NotImplementedError("Cài đặt thao tác pop.")
+        if self.is_empty():
+            raise IndexError("Pop from empty stack.")
+        item = self.top.data
+        self.top = self.top.next
+        self._size -= 1
+        return item
 
     def peek(self) -> Optional[Any]:
         """Xem phần tử ở đỉnh ngăn xếp mà không lấy ra."""
-        raise NotImplementedError("Cài đặt thao tác peek.")
+        if self.is_empty():
+            return None
+        return self.top.data
