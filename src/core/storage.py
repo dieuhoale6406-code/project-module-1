@@ -59,9 +59,11 @@ class TextVectorStorage:
         """
         Ghi thêm một dòng vector mới vào cuối file theo định dạng GloVe.
         """
-        clean_label = str(label).strip().lower()
+        clean_label = " ".join(str(label).split()).lower()
         if not clean_label:
             raise ValueError("Nhãn từ vựng không được để trống.")
+        if clean_label.startswith("#"):
+            raise ValueError("Nhãn từ vựng không được bắt đầu bằng '#'.")
 
         if not values or len(values) != self.expected_dim:
             actual_dim = len(values) if values else 0
@@ -80,7 +82,15 @@ class TextVectorStorage:
         formatted_values = " ".join(f"{v:.6f}" for v in values)
         line = f"{clean_label} {formatted_values}\n"
 
+        needs_newline = False
+        if self.file_path.is_file() and self.file_path.stat().st_size > 0:
+            with self.file_path.open("rb") as rf:
+                rf.seek(-1, 2)
+                needs_newline = rf.read(1) != b"\n"
+
         with self.file_path.open("a", encoding="utf-8") as f:
+            if needs_newline:
+                f.write("\n")
             f.write(line)
 
         return True

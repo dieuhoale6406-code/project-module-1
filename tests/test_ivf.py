@@ -14,7 +14,9 @@ if str(root_dir) not in sys.path:
 
 from core.algorithms.ivf import IVFIndex
 from core.algorithms.linear_scan import LinearScanIndex
+from core.storage import TextVectorStorage
 from models.record import VectorRecord
+import tempfile
 
 
 class TestIVFIndex(unittest.TestCase):
@@ -74,6 +76,19 @@ class TestIVFIndex(unittest.TestCase):
             IVFIndex(dimension=3, nprobe=0)
         with self.assertRaises(ValueError):
             IVFIndex(dimension=3, nprobe=-2)
+
+    def test_init_metric_validation(self) -> None:
+        """Kiểm tra chỉ chấp nhận metric Euclidean và từ chối các metric khác."""
+        ivf1 = IVFIndex(dimension=3, metric="euclidean")
+        self.assertEqual(ivf1.metric, "euclidean")
+
+        ivf2 = IVFIndex(dimension=3, metric=" EUCLIDEAN_DISTANCE ")
+        self.assertEqual(ivf2.metric, "euclidean_distance")
+
+        with self.assertRaises(ValueError):
+            IVFIndex(dimension=3, metric="cosine")
+        with self.assertRaises(ValueError):
+            IVFIndex(dimension=3, metric="manhattan")
 
     # ==========================================
     # 2. Test Huấn luyện K-Means (_train_kmeans)
@@ -225,6 +240,60 @@ class TestIVFIndex(unittest.TestCase):
 
         for (_, d_ivf), (_, d_lin) in zip(ivf_results, linear_results):
             self.assertAlmostEqual(d_ivf, d_lin, places=6)
+
+
+class TestTextVectorStorage(unittest.TestCase):
+    """Kiểm thử tính toàn vẹn dữ liệu cho tầng lưu trữ TextVectorStorage."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.file_path = Path(self.temp_dir.name) / "vectors.txt"
+        self.storage = TextVectorStorage(file_path=str(self.file_path), expected_dim=3)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_load_nonexistent_file(self) -> None:
+        """Đọc file chưa tồn tại trả về []."""
+        storage = TextVectorStorage(file_path="nonexistent_file.txt", expected_dim=3)
+        self.assertEqual(storage.load_vectors(), [])
+
+    def test_append_and_load_normal(self) -> None:
+        """Ghi và đọc dữ liệu thông thường thành công."""
+        self.storage.append_vector("apple", [1.0, 2.0, 3.0])
+        self.storage.append_vector("banana", [4.0, 5.0, 6.0])
+
+        loaded = self.storage.load_vectors()
+        self.assertEqual(len(loaded), 2)
+        self.assertEqual(loaded[0][0], "apple")
+        self.assertEqual(loaded[0][1], [1.0, 2.0, 3.0])
+        self.assertEqual(loaded[1][0], "banana")
+        self.assertEqual(loaded[1][1], [4.0, 5.0, 6.0])
+
+    def test_append_collapses_whitespace_and_rejects_hashes(self) -> None:
+        """Nhãn có xuống dòng/tab phải được gộp khoảng trắng; nhãn bắt đầu bằng # phải bị từ chối."""
+        self.storage.append_vector("deep\nlearning\tword", [1.0, 2.0, 3.0])
+        loaded = self.storage.load_vectors()
+        self.assertEqual(len(loaded), 1)
+        self.assertEqual(loaded[0][0], "deep learning word")
+
+        with self.assertRaises(ValueError):
+            self.storage.append_vector("#comment_tag", [1.0, 2.0, 3.0])
+
+    def test_append_handles_missing_trailing_newline(self) -> None:
+        """File cũ không kết thúc bằng newline thì bản ghi mới vẫn bắt đầu trên dòng riêng."""
+        # Tạo file không có newline ở cuối
+        with self.file_path.open("w", encoding="utf-8") as f:
+            f.write("first 1.000000 2.000000 3.000000")  # Không có \n
+
+        self.storage.append_vector("second", [4.0, 5.0, 6.0])
+
+        loaded = self.storage.load_vectors()
+        self.assertEqual(len(loaded), 2)
+        self.assertEqual(loaded[0][0], "first")
+        self.assertEqual(loaded[0][1], [1.0, 2.0, 3.0])
+        self.assertEqual(loaded[1][0], "second")
+        self.assertEqual(loaded[1][1], [4.0, 5.0, 6.0])
 
 
 if __name__ == "__main__":

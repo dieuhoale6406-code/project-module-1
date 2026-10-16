@@ -34,7 +34,11 @@ class IVFIndex(BaseVectorIndex):
         self.num_clusters = num_clusters
         self.nprobe = nprobe
         self.seed = seed
-        self.metric = metric
+
+        norm_metric = metric.lower().strip()
+        if norm_metric not in ("euclidean", "euclidean_distance"):
+            raise ValueError(f"IVFIndex chỉ hỗ trợ metric 'euclidean', nhận: {metric}")
+        self.metric = norm_metric
         # Danh sách tọa độ tâm cụm (centroids): List[List[float]]
         self.centroids: List[List[float]] = []
         # Danh sách chỉ mục đảo: cluster_idx -> List[VectorRecord]
