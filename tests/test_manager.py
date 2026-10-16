@@ -202,15 +202,23 @@ class TestVectorEngineManager(unittest.TestCase):
         self.assertEqual(mgr.get_record("bird").values, [1.0, 1.0])
         self.assertEqual(mgr.dimension, 2)
 
-    # 4. YÊU CẦU 3: Không âm thầm nuốt exceptions trong search_kdtree và tích hợp
-    def test_search_kdtree_raises_clear_error_when_not_implemented(self) -> None:
+    # 4. YÊU CẦU 3: search_kdtree hoạt động khi đã cài đặt, và không âm thầm nuốt lỗi
+    def test_search_kdtree_returns_results_when_implemented(self) -> None:
         mgr = VectorEngineManager()
         mgr.add_record("sample", [1.0, 2.0])
 
-        # KDTreeIndex hiện tại đang có raise NotImplementedError trong src/core/algorithms/kdtree.py
-        # search_kdtree phải ném NotImplementedError rõ ràng, KHÔNG âm thầm nuốt lỗi trả về ([], 0.0)
+        results, latency = mgr.search_kdtree([1.0, 2.0], top_k=1)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][0].label, "sample")
+        self.assertGreaterEqual(latency, 0.0)
+
+    def test_search_unimplemented_algorithm_raises_clear_error(self) -> None:
+        mgr = VectorEngineManager()
+        mgr.add_record("sample", [1.0, 2.0])
+
+        # HNSWIndex hiện tại chưa cài đặt (raise NotImplementedError)
         with self.assertRaises(NotImplementedError):
-            mgr.search_kdtree([1.0, 2.0], top_k=1)
+            mgr.search("hnsw", [1.0, 2.0], top_k=1)
 
     def test_search_kdtree_raises_value_error_when_unregistered(self) -> None:
         mgr = VectorEngineManager()
