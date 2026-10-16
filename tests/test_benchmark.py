@@ -99,12 +99,16 @@ class TestBenchmarkRunner(unittest.TestCase):
         for row in results:
             self.assertIn(row["n"], scales)
             self.assertIn("algorithm", row)
+            self.assertIn("category", row)
+            self.assertIn("speedup", row)
             self.assertIn("build_time_ms", row)
             self.assertIn("mean_latency_ms", row)
             self.assertIn("p95_latency_ms", row)
             self.assertIn("qps", row)
             self.assertIn("recall_percent", row)
 
+            self.assertIsInstance(row["category"], str)
+            self.assertGreaterEqual(row["speedup"], 0.0)
             self.assertGreaterEqual(row["build_time_ms"], 0.0)
             self.assertGreaterEqual(row["mean_latency_ms"], 0.0)
             self.assertGreaterEqual(row["p95_latency_ms"], row["mean_latency_ms"] * 0.5)
@@ -112,9 +116,11 @@ class TestBenchmarkRunner(unittest.TestCase):
             self.assertGreaterEqual(row["recall_percent"], 0.0)
             self.assertLessEqual(row["recall_percent"], 100.0)
 
-            # Linear Scan luôn phải có Recall = 100%
+            # Linear Scan luôn phải có Recall = 100% và Speedup = 1.0x
             if row["algorithm_key"] == "linear_scan":
                 self.assertEqual(row["recall_percent"], 100.0)
+                self.assertEqual(row["speedup"], 1.0)
+                self.assertIn("Exact", row["category"])
 
 
 if __name__ == "__main__":

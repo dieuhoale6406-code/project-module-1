@@ -112,14 +112,34 @@ class BenchmarkRunner:
             # Xây dựng Ground Truth cho từng câu hỏi tại mốc N này
             linear_baseline.build(sub_records)
             ground_truth_map: List[Set[str]] = []
+            gt_latencies_ms: List[float] = []
             for q in queries:
+                t_gt_s = time.perf_counter()
                 gt_results = linear_baseline.search(q, top_k=top_k)
+                t_gt_e = time.perf_counter()
+                gt_latencies_ms.append((t_gt_e - t_gt_s) * 1000.0)
                 gt_ids = {str(getattr(rec, "id", rec)) for rec, _ in gt_results}
                 ground_truth_map.append(gt_ids)
+
+            gt_mean_latency = (sum(gt_latencies_ms) / len(gt_latencies_ms)) if gt_latencies_ms else 0.0
 
             # Đánh giá từng thuật toán trong danh sách
             for algo_key, algo in algorithm_instances.items():
                 algo_name = getattr(algo, "name", algo_key)
+
+                # Xác định bản chất thuật toán
+                if algo_key in ("linear_scan",) or "linear" in algo_name.lower():
+                    category = "Exact (Baseline)"
+                elif algo_key in ("kdtree",) or "k-d" in algo_name.lower() or "kdtree" in algo_name.lower():
+                    category = "Exact (Phân vùng trục)"
+                elif algo_key in ("ivf",) or "ivf" in algo_name.lower():
+                    category = "ANN (Phân cụm Voronoi)"
+                elif algo_key in ("lsh",) or "lsh" in algo_name.lower():
+                    category = "ANN (Băm ngẫu nhiên)"
+                elif algo_key in ("hnsw",) or "hnsw" in algo_name.lower():
+                    category = "ANN (Đồ thị đa tầng)"
+                else:
+                    category = "ANN (Xấp xỉ)"
 
                 # a. Bấm giờ xây dựng chỉ mục (Build Time)
                 t_build_start = time.perf_counter()
@@ -164,11 +184,18 @@ class BenchmarkRunner:
                 # Đối với Linear Scan, luôn đảm bảo recall chính xác 100%
                 if algo_key == "linear_scan" or algo_name == "Linear Scan":
                     avg_recall_percent = 100.0
+                    speedup_ratio = 1.0
+                elif mean_latency_ms > 0 and gt_mean_latency > 0:
+                    speedup_ratio = round(gt_mean_latency / mean_latency_ms, 2)
+                else:
+                    speedup_ratio = 1.0
 
                 benchmark_results.append({
                     "n": n,
                     "algorithm": algo_name,
                     "algorithm_key": algo_key,
+                    "category": category,
+                    "speedup": speedup_ratio,
                     "build_time_ms": round(build_time_ms, 2),
                     "mean_latency_ms": round(mean_latency_ms, 3),
                     "p95_latency_ms": round(p95_latency_ms, 3),
