@@ -4,8 +4,22 @@ import streamlit as st
 
 try:
     from core.manager import AlgorithmNotReadyError, VectorEngineManager
+    from core.benchmark import BenchmarkRunner
+    from core.algorithms.linear_scan import LinearScanIndex
+    from core.algorithms.kdtree import KDTreeIndex
 except ImportError:
     from src.core.manager import AlgorithmNotReadyError, VectorEngineManager
+    from src.core.benchmark import BenchmarkRunner
+    from src.core.algorithms.linear_scan import LinearScanIndex
+    from src.core.algorithms.kdtree import KDTreeIndex
+
+try:
+    from core.algorithms.ivf import IVFIndex
+except ImportError:
+    try:
+        from src.core.algorithms.ivf import IVFIndex
+    except ImportError:
+        IVFIndex = None
 
 try:
     from ui.dataset import parse_vector_input
@@ -198,6 +212,14 @@ def _render_comparison_results(data: Dict[str, Any]) -> None:
 
     st.dataframe(data["summary_rows"], use_container_width=True, hide_index=True)
 
+    # Dynamic Trade-off analysis notes calculated from actual run metrics
+    analysis_notes = data.get("analysis_notes", [])
+    if analysis_notes:
+        with st.container():
+            st.markdown("##### Phân tích đánh đổi (Speedup vs Recall Trade-off)")
+            for note in analysis_notes:
+                st.info(note)
+
     # Detailed Top-K inspection per algorithm
     detail_dict = data.get("detail_results", {})
     available_algs = [a for a, res in detail_dict.items() if res is not None]
@@ -223,7 +245,7 @@ def _render_comparison_results(data: Dict[str, Any]) -> None:
             st.dataframe(detail_rows, use_container_width=True, hide_index=True)
 
 
-def _render_benchmark_section() -> None:
+def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> None:
     """Render Section B: Benchmark by dataset size N inside a collapsed expander."""
     st.markdown("---")
     with st.expander("Thử nghiệm hiệu năng (Benchmark theo quy mô N)", expanded=False):
@@ -231,14 +253,14 @@ def _render_benchmark_section() -> None:
 
         col_bn, col_bq, col_bbtn = st.columns([3, 2, 2])
         with col_bn:
-            st.multiselect(
+            selected_scales = st.multiselect(
                 "Quy mô tập dữ liệu (N)",
                 options=[100, 500, 1000, 5000],
                 default=[100, 500, 1000, 5000],
                 help="Các mốc quy mô thử nghiệm theo đặc tả đồ án.",
             )
         with col_bq:
-            st.number_input(
+            query_count = st.number_input(
                 "Số câu hỏi mẫu",
                 min_value=5,
                 max_value=100,
@@ -258,7 +280,100 @@ def _render_benchmark_section() -> None:
             )
 
         if run_bm_clicked:
-            st.info("Tính năng thử nghiệm hiệu năng đang được hoàn thiện.")
+            if manager is None or manager.record_count == 0:
+                st.warning("Vui lòng nạp dữ liệu ở Tab 'QUẢN LÝ DỮ LIỆU' trước khi thực thi benchmark.")
+            elif not selected_scales:
+                st.warning("Vui lòng chọn ít nhất một mốc quy mô N để benchmark.")
+            else:
+                with st.spinner("Đang thực thi đo lường hiệu năng đa chỉ số trên các mốc quy mô N..."):
+                    all_records = (
+                        manager.get_all_records()
+                        if hasattr(manager, "get_all_records")
+                        else list(getattr(manager, "_records", {}).values())
+                    )
+                    dim = manager.dimension or 50
+
+                    candidate_algos: Dict[str, Any] = {
+                        "linear_scan": LinearScanIndex(metric="euclidean"),
+                    }
+                    try:
+                        candidate_algos["kdtree"] = KDTreeIndex(dimension=dim)
+                    except Exception:
+                        pass
+                    if IVFIndex is not None:
+                        try:
+                            candidate_algos["ivf"] = IVFIndex(dimension=dim)
+                        except Exception:
+                            pass
+                    try:
+                        from core.algorithms.lsh import LSHIndex
+                        candidate_algos["lsh"] = LSHIndex(dimension=dim)
+                    except Exception:
+                        pass
+                    try:
+                        from core.algorithms.hnsw import HNSWIndex
+                        candidate_algos["hnsw"] = HNSWIndex(dimension=dim)
+                    except Exception:
+                        pass
+
+                    active_algos: Dict[str, Any] = {}
+                    sample_probe = all_records[:2] if len(all_records) >= 2 else all_records
+                    for k, algo in candidate_algos.items():
+                        try:
+                            algo.build(sample_probe)
+                            algo.search(sample_probe[0].values, top_k=1)
+                            active_algos[k] = algo
+                        except (NotImplementedError, Exception):
+                            continue
+
+                    runner = BenchmarkRunner(full_records=all_records, dimension=dim)
+                    results = runner.run_benchmark(
+                        algorithm_instances=active_algos,
+                        scale_sizes=selected_scales,
+                        top_k=5,
+                        query_count=int(query_count),
+                    )
+                    st.session_state["benchmark_results"] = results
+
+        bm_results = st.session_state.get("benchmark_results")
+        if bm_results:
+            st.markdown("#### Bảng tổng hợp đa chỉ số hiệu năng")
+            display_rows = []
+            for r in bm_results:
+                speedup_val = r.get("speedup", 1.0)
+                display_rows.append({
+                    "Quy mô N": r["n"],
+                    "Thuật toán": r["algorithm"],
+                    "Bản chất": r.get("category", "—"),
+                    "Tăng tốc (Speedup)": f"{speedup_val:.2f}x",
+                    "Build Time (ms)": f"{r['build_time_ms']:.2f}",
+                    "Search Time TB (ms)": f"{r['mean_latency_ms']:.3f}",
+                    "P95 Latency (ms)": f"{r['p95_latency_ms']:.3f}",
+                    "QPS": f"{r['qps']:.1f}",
+                    "Recall@K (%)": f"{r['recall_percent']:.1f}%",
+                })
+            st.dataframe(display_rows, use_container_width=True, hide_index=True)
+
+            st.markdown("#### Biểu đồ đối chiếu trực quan theo quy mô N")
+            col_chart1, col_chart2, col_chart3 = st.columns(3)
+
+            import pandas as pd
+            df_bm = pd.DataFrame(bm_results)
+
+            with col_chart1:
+                st.markdown("**Thời gian tìm kiếm TB (ms)**")
+                chart_latency = df_bm.pivot(index="n", columns="algorithm", values="mean_latency_ms")
+                st.line_chart(chart_latency)
+
+            with col_chart2:
+                st.markdown("**Hệ số tăng tốc (Speedup vs GT)**")
+                chart_speedup = df_bm.pivot(index="n", columns="algorithm", values="speedup")
+                st.line_chart(chart_speedup)
+
+            with col_chart3:
+                st.markdown("**Tỷ lệ thu hồi (Recall %)**")
+                chart_recall = df_bm.pivot(index="n", columns="algorithm", values="recall_percent")
+                st.line_chart(chart_recall)
 
 
 def render_search_tab(manager: VectorEngineManager) -> None:
@@ -444,6 +559,15 @@ def render_search_tab(manager: VectorEngineManager) -> None:
         elif compare_clicked:
             summary_rows = []
             detail_results: Dict[str, Any] = {}
+            analysis_notes: List[str] = []
+
+            algo_categories = {
+                "linear_scan": "Exact (Toàn bộ)",
+                "kdtree": "Exact (Phân vùng trục)",
+                "ivf": "ANN (Cắt tỉa Voronoi)",
+                "lsh": "ANN (Băm ngẫu nhiên)",
+                "hnsw": "ANN (Đồ thị đa tầng)",
+            }
 
             with st.spinner("Đang chạy đối sánh 5 thuật toán..."):
                 # 1. Ground Truth via Linear Scan
@@ -456,8 +580,10 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     gt_ids = set(r.id for r, _ in gt_results)
                     summary_rows.append({
                         "Thuật toán": "Linear Scan",
+                        "Bản chất": algo_categories["linear_scan"],
                         "Trạng thái": "Sẵn sàng (Ground Truth)",
-                        "Thời gian tìm kiếm (ms)": f"{gt_latency:.2f}",
+                        "Thời gian (ms)": f"{gt_latency:.2f}",
+                        "Tốc độ (Speedup)": "1.00x (Chuẩn)",
                         "Recall@K": "100.0%",
                     })
                     detail_results["linear_scan"] = gt_results
@@ -468,45 +594,75 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                 # 2. Evaluate remaining 4 algorithms
                 for algo in ["kdtree", "lsh", "ivf", "hnsw"]:
                     algo_label = ALGORITHM_DISPLAY_NAMES.get(algo, algo)
+                    algo_cat = algo_categories.get(algo, "ANN")
                     algo_metrics = manager.get_supported_metrics(algo)
 
                     if metric_key not in algo_metrics:
                         summary_rows.append({
                             "Thuật toán": algo_label,
+                            "Bản chất": algo_cat,
                             "Trạng thái": "Không hỗ trợ độ đo đã chọn",
-                            "Thời gian tìm kiếm (ms)": "—",
+                            "Thời gian (ms)": "—",
+                            "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })
                         detail_results[algo] = None
                         continue
 
                     try:
+                        search_kwargs = dict(alg_params) if algo == selected_alg else {}
                         cand_results, cand_lat = manager.search(
-                            algo, query_values, top_k=top_k, metric=metric_key
+                            algo, query_values, top_k=top_k, metric=metric_key, **search_kwargs
                         )
                         cand_ids = set(r.id for r, _ in cand_results)
                         hits = len(cand_ids & gt_ids)
                         recall_val = (hits / len(gt_ids) * 100.0) if gt_ids else 100.0
+                        speedup = (gt_latency / cand_lat) if cand_lat > 0 else 1.0
+
                         summary_rows.append({
                             "Thuật toán": algo_label,
+                            "Bản chất": algo_cat,
                             "Trạng thái": "Sẵn sàng",
-                            "Thời gian tìm kiếm (ms)": f"{cand_lat:.2f}",
+                            "Thời gian (ms)": f"{cand_lat:.2f}",
+                            "Tốc độ (Speedup)": f"{speedup:.2f}x",
                             "Recall@K": f"{recall_val:.1f}%",
                         })
                         detail_results[algo] = cand_results
+
+                        if algo == "kdtree":
+                            dim_info = f"d={manager.dimension}" if manager.dimension else "không gian nhiều chiều"
+                            analysis_notes.append(
+                                f"**KD-Tree ({algo_cat})**: Recall đạt **{recall_val:.1f}%** (chính xác tuyệt đối), "
+                                f"tốc độ đạt **{speedup:.2f}x** so với Linear Scan ({cand_lat:.2f} ms vs {gt_latency:.2f} ms). "
+                                f"Tại {dim_info}, do hiệu ứng Lời nguyền số chiều (Curse of Dimensionality), "
+                                f"hình cầu lân cận giao cắt với phần lớn các siêu phẳng phân chia nên cây phải duyệt lại (backtrack) "
+                                f"hầu hết các nhánh, khiến độ trễ tiệm cận duyệt toàn bộ."
+                            )
+                        elif algo == "ivf":
+                            nprobe_str = f"nprobe = {search_kwargs.get('nprobe', 2)}" if "nprobe" in search_kwargs else "nprobe mặc định"
+                            analysis_notes.append(
+                                f"**IVF-Flat ({algo_cat})**: Đạt tốc độ tăng tốc **{speedup:.2f}x** "
+                                f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%** ({nprobe_str}). "
+                                f"Thuật toán chỉ quét trong các cụm Voronoi gần nhất nên giảm thiểu số lượng phép tính khoảng cách. "
+                                f"Đây là ví dụ điển hình của sự đánh đổi giữa tốc độ và độ thu hồi trong tìm kiếm xấp xỉ."
+                            )
                     except (AlgorithmNotReadyError, NotImplementedError):
                         summary_rows.append({
                             "Thuật toán": algo_label,
+                            "Bản chất": algo_cat,
                             "Trạng thái": "Chưa sẵn sàng",
-                            "Thời gian tìm kiếm (ms)": "—",
+                            "Thời gian (ms)": "—",
+                            "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })
                         detail_results[algo] = None
                     except Exception:
                         summary_rows.append({
                             "Thuật toán": algo_label,
+                            "Bản chất": algo_cat,
                             "Trạng thái": "Lỗi khi tìm kiếm",
-                            "Thời gian tìm kiếm (ms)": "—",
+                            "Thời gian (ms)": "—",
+                            "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })
                         detail_results[algo] = None
@@ -517,6 +673,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                 "top_k": top_k,
                 "summary_rows": summary_rows,
                 "detail_results": detail_results,
+                "analysis_notes": analysis_notes,
             }
             st.session_state["single_search_result"] = None
 
@@ -527,4 +684,4 @@ def render_search_tab(manager: VectorEngineManager) -> None:
         _render_comparison_results(st.session_state["compare_search_result"])
 
     # 6. Section B: Benchmark Section (Placed at bottom)
-    _render_benchmark_section()
+    _render_benchmark_section(manager)
