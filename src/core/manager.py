@@ -122,6 +122,10 @@ class VectorEngineManager:
         """Return all vector records currently in memory."""
         return list(self._records.values())
 
+    def list_records(self) -> List[VectorRecord]:
+        """Alias for get_all_records() to return all vector records currently in memory."""
+        return self.get_all_records()
+
     def get_record(self, identifier: str) -> Optional[VectorRecord]:
         """Retrieve a vector record by label or unique ID."""
         if not identifier:

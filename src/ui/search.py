@@ -278,7 +278,11 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
                 st.warning("Vui lòng chọn ít nhất một mốc quy mô N để benchmark.")
             else:
                 with st.spinner("Đang thực thi đo lường hiệu năng đa chỉ số trên các mốc quy mô N..."):
-                    all_records = manager.list_records()
+                    all_records = (
+                        manager.get_all_records()
+                        if hasattr(manager, "get_all_records")
+                        else list(getattr(manager, "_records", {}).values())
+                    )
                     dim = manager.dimension or 50
 
                     candidate_algos: Dict[str, Any] = {
