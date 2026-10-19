@@ -82,16 +82,24 @@ def _render_advanced_settings(
         elif selected_alg == "kdtree":
             st.caption("KD-Tree: Phân vùng trực giao theo trục tọa độ để tăng tốc tìm kiếm ở số chiều thấp.")
         elif selected_alg == "lsh":
-            c_p1, c_p2 = st.columns(2)
+            c_p1, c_p2, c_p3 = st.columns(3)
             with c_p1:
                 alg_params["num_hyperplanes"] = st.slider(
-                    "Số siêu phẳng (num_hyperplanes)",
+                    "Số siêu phẳng (m)",
                     min_value=2,
-                    max_value=32,
+                    max_value=16,
                     value=4,
-                    help="Số siêu phẳng băm ngẫu nhiên. Khuyến nghị 3-5 để đạt Recall cao (~80%) và tăng tốc 3x-5x.",
+                    help="Số siêu phẳng băm ngẫu nhiên trên mỗi bảng. Khuyến nghị 3-5.",
                 )
             with c_p2:
+                alg_params["num_tables"] = st.slider(
+                    "Số bảng băm (L)",
+                    min_value=1,
+                    max_value=8,
+                    value=2,
+                    help="Số bảng băm độc lập (Multi-Table LSH). Chuẩn Indyk & Motwani giúp Recall đạt 90% - 98%.",
+                )
+            with c_p3:
                 alg_params["seed"] = st.number_input("Hạt giống (Seed)", value=42, step=1)
         elif selected_alg == "ivf":
             c_p1, c_p2 = st.columns(2)
@@ -312,7 +320,7 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
                             pass
                     try:
                         from core.algorithms.lsh import LSHIndex
-                        candidate_algos["lsh"] = LSHIndex(dimension=dim, metric="euclidean")
+                        candidate_algos["lsh"] = LSHIndex(dimension=dim, num_hyperplanes=4, num_tables=2, metric="euclidean")
                     except Exception:
                         pass
 

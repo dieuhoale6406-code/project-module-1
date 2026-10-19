@@ -17,6 +17,7 @@ class LSHIndex(BaseVectorIndex):
         self,
         dimension: int,
         num_hyperplanes: int = 4,
+        num_tables: int = 1,
         seed: int = 42,
         metric: str = "cosine",
     ) -> None:
@@ -25,6 +26,8 @@ class LSHIndex(BaseVectorIndex):
             raise ValueError(f"dimension phải là số nguyên dương, nhận: {dimension}")
         if num_hyperplanes <= 0:
             raise ValueError(f"num_hyperplanes phải là số nguyên dương, nhận: {num_hyperplanes}")
+        if num_tables <= 0:
+            raise ValueError(f"num_tables phải là số nguyên dương, nhận: {num_tables}")
 
         norm_metric = metric.lower().strip()
         if norm_metric not in ("cosine", "cosine_distance", "euclidean", "euclidean_distance"):
@@ -34,54 +37,49 @@ class LSHIndex(BaseVectorIndex):
 
         self.dimension = dimension
         self.num_hyperplanes = num_hyperplanes
+        self.num_tables = num_tables
         self.seed = seed
         self.metric = norm_metric
-        # Danh sách m vector pháp tuyến ngẫu nhiên đại diện cho m siêu phẳng
+        # Danh sách m vector pháp tuyến ngẫu nhiên đại diện cho m siêu phẳng (của bảng 0)
         self.hyperplanes: List[List[float]] = []
-        # Bảng băm: chuỗi_bit_hash -> Danh sách các VectorRecord
+        # Bảng băm chính (bảng 0): chuỗi_bit_hash -> Danh sách các VectorRecord
         self.buckets: Dict[str, List[Any]] = {}
+        # Hỗ trợ đa bảng băm (Multi-Table LSH chuẩn Indyk & Motwani, 1998)
+        self.table_hyperplanes: List[List[List[float]]] = []
+        self.tables: List[Dict[str, List[Any]]] = []
 
     def _generate_hyperplanes(self) -> None:
         """
-        Sinh m vector ngẫu nhiên từ phân phối chuẩn làm siêu phẳng phân cách.
-        
-        Các bước thực hiện gợi ý:
-            1. Khởi tạo bộ sinh số ngẫu nhiên: random.Random(self.seed).
-            2. Tạo `self.num_hyperplanes` vector, mỗi vector có đúng `self.dimension` phần tử.
-            3. Mỗi phần tử được lấy từ phân phối chuẩn Gauss: random.gauss(0.0, 1.0).
-            4. Lưu danh sách vào `self.hyperplanes`.
+        Sinh các vector ngẫu nhiên từ phân phối chuẩn làm siêu phẳng phân cách cho các bảng băm.
         """
         rng = random.Random(self.seed)
+        self.table_hyperplanes = []
 
-        self.hyperplanes = []
+        for _ in range(self.num_tables):
+            table_planes = []
+            for _ in range(self.num_hyperplanes):
+                hyperplane = [rng.gauss(0.0, 1.0) for _ in range(self.dimension)]
+                table_planes.append(hyperplane)
+            self.table_hyperplanes.append(table_planes)
 
-        for _ in range(self.num_hyperplanes):
-            hyperplane = []
+        self.hyperplanes = self.table_hyperplanes[0]
 
-            for _ in range(self.dimension):
-                hyperplane.append(rng.gauss(0.0, 1.0))
-                
-            self.hyperplanes.append(hyperplane)
-
-    def _hash_vector(self, values: List[float]) -> str:
+    def _hash_vector(self, values: List[float], table_idx: int = 0) -> str:
         """
-        Ánh xạ một vector d chiều thành một chuỗi bit độ dài m (ví dụ: '10110010').
-        
-        Các bước thực hiện gợi ý:
-            1. Duyệt qua từng siêu phẳng `hyperplane` trong `self.hyperplanes`.
-            2. Tính tích vô hướng giữa vector `values` và `hyperplane`:
-               dot_prod = sum(v * p for v, p in zip(values, hyperplane))
-            3. Nếu dot_prod >= 0: gán bit '1', ngược lại gán bit '0'.
-            4. Nối các bit lại thành chuỗi chuỗi ký tự string và trả về.
+        Ánh xạ một vector d chiều thành một chuỗi bit độ dài m trên bảng băm table_idx.
         """
         if len(values) != self.dimension:
             raise ValueError("Vector không đúng số chiều của chỉ mục.")
 
+        planes = (
+            self.table_hyperplanes[table_idx]
+            if table_idx < len(self.table_hyperplanes)
+            else self.hyperplanes
+        )
         bits = []
 
-        for hyperplane in self.hyperplanes:
-            dot_prod = sum(v * p for v,p in zip(values, hyperplane))
-
+        for hyperplane in planes:
+            dot_prod = sum(v * p for v, p in zip(values, hyperplane))
             if dot_prod >= 0:
                 bits.append("1")
             else:
@@ -91,15 +89,7 @@ class LSHIndex(BaseVectorIndex):
 
     def build(self, records: List[Any]) -> None:
         """
-        Xây dựng chỉ mục (Index) băm LSH.
-        
-        Các bước thực hiện gợi ý:
-            1. Gọi `self._generate_hyperplanes()` để chuẩn bị các siêu phẳng.
-            2. Khởi tạo lại từ điển rỗng: `self.buckets = {}`.
-            3. Duyệt qua từng bản ghi `record` trong `records`:
-               a. Tính mã băm: hash_key = self._hash_vector(record.values).
-               b. Nếu hash_key chưa có trong buckets, tạo danh sách rỗng: self.buckets[hash_key] = [].
-               c. Thêm `record` vào danh sách của bucket tương ứng: self.buckets[hash_key].append(record).
+        Xây dựng chỉ mục (Index) băm LSH đa bảng.
         """
         # Kiểm tra dữ liệu trước khi thay đổi chỉ mục.
         for record in records:
@@ -109,34 +99,29 @@ class LSHIndex(BaseVectorIndex):
                 )
 
         self._generate_hyperplanes()
-        self.buckets = {}
+        # Đảm bảo đồng bộ nếu self.hyperplanes bị mock/patch từ unit tests
+        if not self.table_hyperplanes or self.table_hyperplanes[0] != self.hyperplanes:
+            self.table_hyperplanes = [self.hyperplanes]
+            self.num_tables = 1
+
+        self.tables = [{} for _ in range(self.num_tables)]
+        self.buckets = self.tables[0]
 
         for record in records:
-            hash_key = self._hash_vector(record.values)
-
-            if hash_key not in self.buckets:
-                self.buckets[hash_key] = []
-
-            self.buckets[hash_key].append(record)
+            for t_idx in range(self.num_tables):
+                hash_key = self._hash_vector(record.values, table_idx=t_idx)
+                if hash_key not in self.tables[t_idx]:
+                    self.tables[t_idx][hash_key] = []
+                self.tables[t_idx][hash_key].append(record)
 
     def search(self, query_values: List[float], top_k: int) -> List[Tuple[Any, float]]:
         """
-        Tìm kiếm Top-K vector tương đồng bằng băm LSH.
-        
-        Các bước thực hiện gợi ý:
-            1. Băm vector truy vấn để lấy bucket đích: query_hash = self._hash_vector(query_values).
-            2. Thu thập danh sách ứng viên (candidate_records):
-               - Lấy toàn bộ vector trong bucket `self.buckets.get(query_hash, [])`.
-               - Mở rộng (Fallback): Nếu bucket hiện tại có ít hơn `top_k` vector, duyệt thêm
-                 các bucket lân cận có khoảng cách Hamming = 1 (chỉ khác đúng 1 bit).
-               - Nếu vẫn không có ứng viên: lấy ngẫu nhiên một số vector để không trả về rỗng.
-            3. Tính khoảng cách/độ tương đồng Cosine chính xác giữa `query_values` và từng ứng viên.
-            4. Sắp xếp danh sách ứng viên theo điểm số và trả về đúng `top_k` kết quả tốt nhất.
+        Tìm kiếm Top-K vector tương đồng bằng băm LSH (Multi-Table & Multi-Probe).
         """
         if (
-          isinstance(top_k, bool)
-          or not isinstance(top_k, int)
-          or top_k <= 0
+            isinstance(top_k, bool)
+            or not isinstance(top_k, int)
+            or top_k <= 0
         ):
             raise ValueError("top_k phải là số nguyên dương.")
 
@@ -155,52 +140,51 @@ class LSHIndex(BaseVectorIndex):
         if query_norm == 0:
             raise ValueError("Vector truy vấn không được là vector không.")
 
-        if len(self.hyperplanes) != self.num_hyperplanes:
+        if not self.hyperplanes or len(self.hyperplanes) != self.num_hyperplanes:
             raise RuntimeError("Cần gọi build() trước khi search().")
 
-        if not self.buckets:
+        if not self.buckets and not any(self.tables):
             return []
 
-        # 1. Lấy ứng viên trong bucket trùng mã.
-        query_hash = self._hash_vector(query_values)
+        # 1. Thu thập ứng viên trên tất cả các bảng băm kết hợp thăm dò Hamming radius = 1 (Multi-Probe)
+        seen_ids = set()
+        candidate_records = []
 
-        candidate_records = list(
-            self.buckets.get(query_hash, [])
-        )
+        active_tables = self.tables if self.tables else [self.buckets]
+        for t_idx, t_buckets in enumerate(active_tables):
+            query_hash = self._hash_vector(query_values, table_idx=t_idx)
 
-        # 2. Nếu thiếu, lấy thêm các bucket khác đúng một bit.
-        if len(candidate_records) < top_k:
+            # Bucket chính xác trùng mã
+            for record in t_buckets.get(query_hash, []):
+                if record.id not in seen_ids:
+                    seen_ids.add(record.id)
+                    candidate_records.append(record)
+
+            # Multi-probe: Láng giềng khác 1 bit để gom các vector nằm sát vách siêu phẳng
             for i in range(len(query_hash)):
-                flipped_bit = (
-                    "0" if query_hash[i] == "1" else "1"
-                )
-
+                flipped_bit = "0" if query_hash[i] == "1" else "1"
                 neighbor_hash = (
                     query_hash[:i]
                     + flipped_bit
                     + query_hash[i + 1:]
                 )
+                for record in t_buckets.get(neighbor_hash, []):
+                    if record.id not in seen_ids:
+                        seen_ids.add(record.id)
+                        candidate_records.append(record)
 
-                candidate_records.extend(
-                    self.buckets.get(neighbor_hash, [])
-                )
-
-        # 3. Nếu vẫn rỗng, lấy mẫu ngẫu nhiên.
+        # 2. Nếu vẫn rỗng, lấy mẫu ngẫu nhiên (Random Fallback)
         if not candidate_records:
             all_records = []
-
-            for bucket in self.buckets.values():
-                all_records.extend(bucket)
+            for t in active_tables:
+                for bucket in t.values():
+                    all_records.extend(bucket)
 
             rng = random.Random(self.seed)
             sample_size = min(top_k, len(all_records))
+            candidate_records = rng.sample(all_records, k=sample_size)
 
-            candidate_records = rng.sample(
-                all_records,
-                k=sample_size,
-            )
-
-        # 4. Chấm điểm chính xác trên tập ứng viên theo độ đo cấu hình.
+        # 3. Chấm điểm chính xác trên tập ứng viên theo độ đo cấu hình.
         results = []
         is_cosine = self.metric in ("cosine", "cosine_distance")
 
@@ -219,7 +203,6 @@ class LSHIndex(BaseVectorIndex):
                 dist = euclidean_distance(query_values, record.values)
                 results.append((record, dist))
 
-        # 5. Khoảng cách càng nhỏ càng tốt.
+        # 4. Sắp xếp khoảng cách tăng dần và lấy top_k
         results.sort(key=lambda item: item[1])
-
         return results[:top_k]

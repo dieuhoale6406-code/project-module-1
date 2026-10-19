@@ -270,10 +270,31 @@ class TestLSHIndex(unittest.TestCase):
 
         results = index.search([3.0, 0.0], top_k=2)
         self.assertGreater(len(results), 0)
-        # Vector A trùng query [3, 0] nên khoảng cách Euclidean phải xấp xỉ 0.0
         top_rec, top_dist = results[0]
         self.assertEqual(top_rec.id, "A")
         self.assertAlmostEqual(top_dist, 0.0, places=5)
+
+    def test_num_tables_validation_and_multi_table_search(self):
+        """Kiểm tra xác thực num_tables và khả năng gom ứng viên từ nhiều bảng băm."""
+        with self.assertRaises(ValueError):
+            LSHIndex(dimension=2, num_tables=0)
+        with self.assertRaises(ValueError):
+            LSHIndex(dimension=2, num_tables=-2)
+
+        # Multi-table index với L=3 bảng và metric euclidean
+        index = LSHIndex(dimension=2, num_hyperplanes=4, num_tables=3, seed=42, metric="euclidean")
+        records = [
+            VectorRecord(f"R{i}", f"r{i}", [float(i), float(i * 2)])
+            for i in range(1, 10)
+        ]
+        index.build(records)
+        self.assertEqual(len(index.tables), 3)
+        self.assertEqual(len(index.table_hyperplanes), 3)
+
+        results = index.search([1.0, 2.0], top_k=3)
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[0][0].id, "R1")
+        self.assertAlmostEqual(results[0][1], 0.0, places=5)
 
 
 if __name__ == "__main__":
