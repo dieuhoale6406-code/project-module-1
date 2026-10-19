@@ -23,8 +23,10 @@ except ImportError:
 
 try:
     from ui.dataset import parse_vector_input
+    from ui.query_queue import enqueue_query, render_query_queue, sync_query_queue
 except ImportError:
     from src.ui.dataset import parse_vector_input
+    from src.ui.query_queue import enqueue_query, render_query_queue, sync_query_queue
 
 
 ALGORITHM_DISPLAY_NAMES: Dict[str, str] = {
@@ -378,6 +380,7 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
 
 def render_search_tab(manager: VectorEngineManager) -> None:
     """Render the complete Search & Comparison tab matching Tab 1 visual language."""
+    sync_query_queue(manager)
     # Invalidate cached results if dataset was mutated, including when empty.
     if st.session_state.get("_last_dataset_version") != manager.mutation_version:
         st.session_state["single_search_result"] = None
@@ -491,7 +494,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
     alg_params = _render_advanced_settings(manager, selected_alg, metric_key)
 
     # 3. Differentiated Actions (Search and Compare Buttons)
-    col_btn_search, col_btn_compare, _ = st.columns([1.6, 2.4, 4])
+    col_btn_search, col_btn_compare, col_btn_queue = st.columns([1.6, 2.4, 2.4])
     with col_btn_search:
         search_clicked = st.button(
             "Tìm kiếm",
@@ -507,8 +510,11 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             use_container_width=True,
         )
 
+    with col_btn_queue:
+        enqueue_clicked = st.button("Thêm vào hàng đợi")
+
     # 4. Action Execution
-    if search_clicked or compare_clicked:
+    if search_clicked or compare_clicked or enqueue_clicked:
         query_values: Optional[List[float]] = None
         query_name = ""
 
@@ -516,10 +522,12 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             clean_word = word_query.strip()
             if not clean_word:
                 st.error("Vui lòng nhập từ cần tìm.")
+                render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
                 return
             rec = manager.get_record(clean_word)
             if rec is None:
                 st.error("Không tìm thấy từ này trong dữ liệu.")
+                render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
                 return
             query_values = rec.values
             query_name = rec.label
@@ -527,11 +535,16 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             vals, err = parse_vector_input(raw_vector_input, expected_dim=manager.dimension)
             if err:
                 st.error(err)
+                render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
                 return
             query_values = vals
             query_name = "Vector tùy ý"
 
-        if search_clicked:
+        if enqueue_clicked:
+            enqueue_query(query_name, query_values, selected_alg, top_k, metric_key, alg_params)
+            st.success(f"Đã thêm truy vấn '{query_name}' vào hàng đợi.")
+
+        elif search_clicked:
             try:
                 with st.spinner(f"Đang tìm kiếm bằng {ALGORITHM_DISPLAY_NAMES.get(selected_alg, selected_alg)}..."):
                     results, latency_ms = manager.search(
@@ -682,6 +695,8 @@ def render_search_tab(manager: VectorEngineManager) -> None:
         _render_single_search_results(st.session_state["single_search_result"])
     elif st.session_state.get("compare_search_result"):
         _render_comparison_results(st.session_state["compare_search_result"])
+
+    render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
 
     # 6. Section B: Benchmark Section (Placed at bottom)
     _render_benchmark_section(manager)

@@ -28,13 +28,31 @@ class LinkedQueue:
         return self._size
 
     def enqueue(self, item: Any) -> None:
-        """Thêm phần tử vào cuối hàng đợi."""
-        raise NotImplementedError("Cài đặt thao tác enqueue.")
+        new_node = QueueNode(item)
+
+        if self.rear is None:
+            self.front = new_node
+        else:
+            self.rear.next = new_node
+
+        self.rear = new_node
+        self._size += 1
 
     def dequeue(self) -> Any:
-        """Lấy phần tử ra khỏi đầu hàng đợi."""
-        raise NotImplementedError("Cài đặt thao tác dequeue.")
+        if self.front is None:
+            raise IndexError("Dequeue from empty queue.")
+
+        item = self.front.data
+        self.front = self.front.next
+
+        if self.front is None:
+            self.rear = None
+
+        self._size -= 1
+        return item
 
     def peek(self) -> Optional[Any]:
-        """Xem phần tử ở đầu hàng đợi mà không lấy ra."""
-        raise NotImplementedError("Cài đặt thao tác peek.")
+        if self.front is None:
+            return None
+
+        return self.front.data
