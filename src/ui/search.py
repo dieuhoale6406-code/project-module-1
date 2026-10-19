@@ -626,7 +626,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
 
             with st.spinner("Đang chuẩn bị chỉ mục và đối sánh đồng thời 4 thuật toán (Độ đo Euclidean)..."):
                 # 0. Pre-build all 4 algorithms explicitly to strictly isolate build time from query search latency
-                for algo in ["linear_scan", "kdtree", "ivf", "lsh"]:
+                for algo in ["linear_scan", "kdtree", "lsh", "ivf"]:
                     params = all_alg_params.get(algo, {})
                     try:
                         bld_ms = manager.build_index(algo, metric=cmp_metric, **params)
@@ -656,8 +656,8 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     st.error("Không thể thực hiện đối chiếu Ground Truth với Linear Scan.")
                     return
 
-                # 2. Evaluate candidate algorithms (KD-Tree, IVF-Flat, LSH)
-                for algo in ["kdtree", "ivf", "lsh"]:
+                # 2. Evaluate candidate algorithms (KD-Tree, LSH, IVF-Flat)
+                for algo in ["kdtree", "lsh", "ivf"]:
                     algo_label = algo_display_names.get(algo, algo.upper())
                     search_kwargs = dict(all_alg_params.get(algo, {}))
                     bld_val = build_times.get(algo)
