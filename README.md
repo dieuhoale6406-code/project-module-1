@@ -5,35 +5,30 @@
 ```text
 ├── data/
 │   ├── .gitkeep
-│   └── vectors.txt                # Dữ liệu từ vựng và vector 50 chiều (chuẩn Stanford GloVe)
+│   └── vectors.txt                # Dataset từ vựng và vector 50D (Stanford GloVe chuẩn)
 ├── src/
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── base.py                # Lớp trừu tượng BaseEntity
-│   │   ├── record.py              # Lớp VectorRecord (thực thể vector thuần túy)
-│   │   └── action.py              # Lớp ActionRecord (lưu vết thao tác cho Undo)
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── algorithms/            # 5 thuật toán tìm kiếm vector
-│   │   │   ├── __init__.py
+│   ├── models/                    # Mô hình thực thể dữ liệu
+│   │   ├── base.py                # Lớp cơ sở BaseEntity
+│   │   ├── record.py              # Thực thể VectorRecord (id, values, norm)
+│   │   └── action.py              # Thực thể ActionRecord (phục vụ Undo)
+│   ├── core/                      # Lõi xử lý logic và thuật toán
+│   │   ├── algorithms/            # 4 thuật toán tìm kiếm vector
 │   │   │   ├── base.py            # Giao diện cơ sở BaseVectorIndex
-│   │   │   ├── linear_scan.py     # Thuật toán 1: Exact Linear Scan (Baseline / Ground Truth)
-│   │   │   ├── kdtree.py          # Thuật toán 2: KD-Tree (Phân vùng không gian theo trục)
-│   │   │   ├── lsh.py             # Thuật toán 3: Random Hyperplane LSH (Băm nhạy cảm vị trí)
-│   │   │   ├── ivf.py             # Thuật toán 4: IVF-Flat (Chỉ mục đảo kết hợp K-Means)
-│   │   │   └── hnsw.py            # Thuật toán 5: HNSW (Đồ thị thế giới nhỏ phân tầng)
-│   │   ├── structures/            # Các cấu trúc dữ liệu tự cài đặt thủ công
-│   │   │   ├── __init__.py
-│   │   │   ├── stack.py           # LinkedStack phục vụ hoàn tác (Undo)
-│   │   │   ├── queue.py           # LinkedQueue phục vụ hàng đợi tác vụ truy vấn
-│   │   │   └── heap.py            # BoundedMaxHeap phục vụ lấy Top-K độ phức tạp O(log K)
-│   │   ├── storage.py             # Đọc và ghi file dữ liệu data/vectors.txt
-│   │   ├── metrics.py             # Các hàm đo khoảng cách (Cosine, Euclidean, Dot Product)
-│   │   ├── benchmark.py           # Module đo lường đa chỉ số (Latency, Recall@K, QPS, Build Time)
-│   │   └── manager.py             # VectorEngineManager điều phối trung tâm (Facade Pattern)
-│   └── app.py                     # Giao diện Streamlit 2 Tab (Quản lý dữ liệu & Benchmark)
-├── .gitignore
-├── .python-version
+│   │   │   ├── linear_scan.py     # 01. Linear Scan Baseline (Ground Truth)
+│   │   │   ├── kdtree.py          # 02. KD-Tree (Spatial Indexing)
+│   │   │   ├── ivf.py             # 03. IVF-Flat (Inverted File Index)
+│   │   │   └── lsh.py             # 04. Random Hyperplane LSH
+│   │   ├── structures/            # Cấu trúc dữ liệu tự cài đặt thuần túy
+│   │   │   ├── heap.py            # BoundedMaxHeap (Top-K selection)
+│   │   │   ├── stack.py           # LinkedStack (Undo)
+│   │   │   └── queue.py           # LinkedQueue (Task Queue)
+│   │   ├── storage.py             # I/O đọc và ghi file dữ liệu
+│   │   ├── metrics.py             # Độ đo khoảng cách (Cosine, Euclidean, Dot Product)
+│   │   ├── benchmark.py           # Đo lường Latency, Recall, QPS
+│   │   └── manager.py             # VectorEngineManager (Facade điều phối trung tâm)
+│   ├── ui/                        # Giao diện người dùng Streamlit
+│   └── app.py                     # Entrypoint khởi chạy ứng dụng
+├── tests/                         # Bộ kiểm thử tự động toàn diện (276 tests)
 ├── pyproject.toml
 ├── uv.lock
 └── README.md
@@ -41,23 +36,33 @@
 
 ---
 
-## 2. Hướng dẫn cài đặt và thực thi
+## 2. Hướng dẫn cài đặt & thực thi
 
 ### Yêu cầu môi trường
-- Python 3.12+
-- Trình quản lý gói `uv`
 
-### Cài đặt môi trường
+- Python 3.12+
+- Quản lý gói bằng `uv` (hoặc `pip`)
+
+### Cài đặt các phụ thuộc
+
 ```bash
 uv sync
 ```
 
-### Khởi chạy ứng dụng giao diện
+### Khởi chạy ứng dụng Web (Streamlit UI)
+
 ```bash
 uv run streamlit run src/app.py
 ```
 
-### Chạy kiểm thử xác thực 5 thuật toán
+### Chạy toàn bộ 276 bài kiểm thử tự động (Unit Tests)
+
 ```bash
-uv run python -c "from src.core.algorithms import LinearScanIndex, KDTreeIndex, LSHIndex, IVFIndex, HNSWIndex; print('Đã nạp thành công 5 thuật toán')"
+uv run pytest
+```
+
+### Xác thực nhanh 4 thuật toán bằng CLI
+
+```bash
+uv run python -c "from src.core.algorithms import LinearScanIndex, KDTreeIndex, IVFIndex, LSHIndex; print('Successfully loaded 4 core algorithms!')"
 ```
