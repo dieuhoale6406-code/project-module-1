@@ -16,7 +16,7 @@ class LSHIndex(BaseVectorIndex):
     def __init__(
         self,
         dimension: int,
-        num_hyperplanes: int = 8,
+        num_hyperplanes: int = 4,
         seed: int = 42,
         metric: str = "cosine",
     ) -> None:

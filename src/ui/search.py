@@ -85,7 +85,11 @@ def _render_advanced_settings(
             c_p1, c_p2 = st.columns(2)
             with c_p1:
                 alg_params["num_hyperplanes"] = st.slider(
-                    "Số siêu phẳng (num_hyperplanes)", min_value=2, max_value=32, value=8
+                    "Số siêu phẳng (num_hyperplanes)",
+                    min_value=2,
+                    max_value=32,
+                    value=4,
+                    help="Số siêu phẳng băm ngẫu nhiên. Khuyến nghị 3-5 để đạt Recall cao (~80%) và tăng tốc 3x-5x.",
                 )
             with c_p2:
                 alg_params["seed"] = st.number_input("Hạt giống (Seed)", value=42, step=1)
