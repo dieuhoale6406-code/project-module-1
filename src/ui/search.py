@@ -215,7 +215,7 @@ def _render_comparison_results(data: Dict[str, Any]) -> None:
     # Dynamic Trade-off analysis notes (thu gọn trong expander để giao diện sạch sẽ, chỉ mở khi cần thuyết trình)
     analysis_notes = data.get("analysis_notes", [])
     if analysis_notes:
-        with st.expander("💡 Phân tích đánh đổi & Lý giải kết quả (Trade-off Insights)", expanded=False):
+        with st.expander("Phân tích đánh đổi & Lý giải kết quả (Trade-off Insights)", expanded=False):
             for note in analysis_notes:
                 st.markdown(f"- {note}")
 
