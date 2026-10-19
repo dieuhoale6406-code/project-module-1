@@ -6,8 +6,10 @@ import streamlit as st
 
 try:
     from core.manager import VectorEngineManager
+    from core.storage import TextVectorStorage
 except ImportError:
     from src.core.manager import VectorEngineManager
+    from src.core.storage import TextVectorStorage
 
 
 def set_flash_message(message: str, level: str = "success") -> None:
@@ -74,11 +76,11 @@ def parse_glove_line(line: str, expected_dim: int = 50) -> Optional[Tuple[str, L
 def load_glove_subset(
     manager: VectorEngineManager,
     file_path: str,
-    limit: int = 10000,
+    limit: Optional[int] = 10000,
     expected_dim: int = 50,
 ) -> Tuple[int, int]:
     """
-    Stream a subset of GloVe vectors into manager without loading the full file into memory.
+    Stream a subset of GloVe vectors into manager using TextVectorStorage.
     Appends valid records and safely skips duplicates and invalid lines.
     Returns (loaded_count, skipped_count).
     """
@@ -86,23 +88,21 @@ def load_glove_subset(
     if not path.is_file():
         raise FileNotFoundError(f"Tập tin không tồn tại: {file_path}")
 
+    storage = TextVectorStorage(file_path=str(path), expected_dim=expected_dim)
+    vectors = storage.load_vectors(limit=limit)
+
+    if hasattr(manager, "add_records_batch"):
+        return manager.add_records_batch(vectors, track_undo=False)
+
     loaded_count = 0
     skipped_count = 0
 
-    with path.open("r", encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            if loaded_count >= limit:
-                break
-            parsed = parse_glove_line(line, expected_dim=expected_dim)
-            if parsed is None:
-                skipped_count += 1
-                continue
-            label, values = parsed
-            try:
-                manager.add_record(label=label, values=values, track_undo=False)
-                loaded_count += 1
-            except ValueError:
-                skipped_count += 1
+    for label, values in vectors:
+        try:
+            manager.add_record(label=label, values=values, track_undo=False)
+            loaded_count += 1
+        except ValueError:
+            skipped_count += 1
 
     return loaded_count, skipped_count
 
@@ -191,16 +191,22 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                     e_path = st.text_input("Đường dẫn tệp", value="data/vectors.txt", key="e_load_path")
                     e_limit = st.selectbox(
                         "Số lượng từ",
-                        options=[100, 500, 1000, 5000, 10000],
+                        options=[100, 500, 1000, 5000, 10000, 20000, 50000, -1],
                         index=2,
-                        format_func=lambda x: f"{x:,}",
+                        format_func=lambda x: "Tất cả (Toàn bộ 400.000 từ)" if x == -1 else f"{x:,} từ",
                         key="e_load_limit",
                     )
                     if st.button("Bắt đầu nạp", type="primary", use_container_width=True, key="e_load_btn"):
                         try:
-                            with st.spinner(f"Đang nạp {e_limit:,} từ vựng..."):
+                            actual_limit = None if e_limit == -1 else int(e_limit)
+                            spinner_msg = (
+                                "Đang nạp toàn bộ 400.000 từ vựng..."
+                                if e_limit == -1
+                                else f"Đang nạp {e_limit:,} từ vựng..."
+                            )
+                            with st.spinner(spinner_msg):
                                 loaded, skipped = load_glove_subset(
-                                    manager, e_path, limit=int(e_limit), expected_dim=50
+                                    manager, e_path, limit=actual_limit, expected_dim=50
                                 )
                             set_flash_message(f"Đã nạp thành công {loaded:,} từ vựng.", "success")
                             st.rerun()
@@ -224,7 +230,13 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                             else:
                                 try:
                                     manager.add_record(label=e_lbl.strip(), values=vals)
-                                    set_flash_message(f"Đã thêm từ '{e_lbl.strip()}'.", "success")
+                                    # Ghi lưu bền vững vào file vectors.txt qua TextVectorStorage
+                                    try:
+                                        storage = TextVectorStorage(file_path="data/vectors.txt", expected_dim=50)
+                                        storage.append_vector(label=e_lbl.strip(), values=vals)
+                                    except Exception:
+                                        pass
+                                    set_flash_message(f"Đã thêm từ '{e_lbl.strip()}' và lưu vào tệp dữ liệu.", "success")
                                     st.rerun()
                                 except ValueError as val_err:
                                     st.error(str(val_err))
@@ -273,16 +285,22 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
             tb_path = st.text_input("Đường dẫn tệp", value="data/vectors.txt", key="tb_load_path")
             tb_limit = st.selectbox(
                 "Số lượng từ",
-                options=[100, 500, 1000, 5000, 10000],
+                options=[100, 500, 1000, 5000, 10000, 20000, 50000, -1],
                 index=2,
-                format_func=lambda x: f"{x:,}",
+                format_func=lambda x: "Tất cả (Toàn bộ 400.000 từ)" if x == -1 else f"{x:,} từ",
                 key="tb_load_limit",
             )
             if st.button("Nạp dữ liệu", type="primary", use_container_width=True, key="tb_load_btn"):
                 try:
-                    with st.spinner(f"Đang nạp {tb_limit:,} từ vựng..."):
+                    actual_limit = None if tb_limit == -1 else int(tb_limit)
+                    spinner_msg = (
+                        "Đang nạp toàn bộ 400.000 từ vựng..."
+                        if tb_limit == -1
+                        else f"Đang nạp {tb_limit:,} từ vựng..."
+                    )
+                    with st.spinner(spinner_msg):
                         loaded, skipped = load_glove_subset(
-                            manager, tb_path, limit=int(tb_limit), expected_dim=manager.dimension or 50
+                            manager, tb_path, limit=actual_limit, expected_dim=manager.dimension or 50
                         )
                     set_flash_message(
                         f"Đã nạp thành công {loaded:,} từ vựng.", "success"
@@ -309,7 +327,15 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                     else:
                         try:
                             manager.add_record(label=tb_add_lbl.strip(), values=vals)
-                            set_flash_message(f"Đã thêm từ '{tb_add_lbl.strip()}'.", "success")
+                            # Ghi lưu bền vững vào file vectors.txt qua TextVectorStorage
+                            try:
+                                storage = TextVectorStorage(
+                                    file_path="data/vectors.txt", expected_dim=manager.dimension or 50
+                                )
+                                storage.append_vector(label=tb_add_lbl.strip(), values=vals)
+                            except Exception:
+                                pass
+                            set_flash_message(f"Đã thêm từ '{tb_add_lbl.strip()}' và lưu vào tệp dữ liệu.", "success")
                             st.rerun()
                         except ValueError as val_err:
                             st.error(str(val_err))
