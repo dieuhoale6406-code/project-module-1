@@ -139,9 +139,19 @@ def parse_vector_input(
     return values, None
 
 
+def _get_default_vector_path() -> str:
+    """Return data/sample_vectors.txt as primary default for cloud & local demo, fallback to data/vectors.txt."""
+    if Path("data/sample_vectors.txt").is_file():
+        return "data/sample_vectors.txt"
+    if Path("data/vectors.txt").is_file():
+        return "data/vectors.txt"
+    return "data/sample_vectors.txt"
+
+
 def render_dataset_tab(manager: VectorEngineManager) -> None:
     """Render the Data Workspace with dataset centerpiece, contextual toolbar, and record detail actions."""
     display_flash_message()
+    default_data_path = _get_default_vector_path()
 
     # Helpful empty state when N = 0
     if manager.record_count == 0:
@@ -171,7 +181,7 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                 try:
                     with st.spinner("Đang nạp 1.000 từ vựng mẫu..."):
                         loaded, skipped = load_glove_subset(
-                            manager, "data/vectors.txt", limit=1000, expected_dim=50
+                            manager, default_data_path, limit=1000, expected_dim=50
                         )
                     if loaded == 0 and skipped > 0:
                         set_flash_message(
@@ -188,7 +198,7 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
             with c_sub1:
                 with st.popover("Tùy chọn nạp", icon=":material/upload:", use_container_width=True):
                     st.markdown("**Nạp từ tệp dữ liệu**")
-                    e_path = st.text_input("Đường dẫn tệp", value="data/vectors.txt", key="e_load_path")
+                    e_path = st.text_input("Đường dẫn tệp", value=default_data_path, key="e_load_path")
                     e_limit = st.selectbox(
                         "Số lượng từ",
                         options=[100, 500, 1000, 5000, 10000, 20000, 50000, -1],
@@ -232,7 +242,7 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                                     manager.add_record(label=e_lbl.strip(), values=vals)
                                     # Ghi lưu bền vững vào file vectors.txt qua TextVectorStorage
                                     try:
-                                        storage = TextVectorStorage(file_path="data/vectors.txt", expected_dim=50)
+                                        storage = TextVectorStorage(file_path=default_data_path, expected_dim=50)
                                         storage.append_vector(label=e_lbl.strip(), values=vals)
                                     except Exception:
                                         pass
@@ -282,7 +292,7 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
     with col_load:
         with st.popover("Nạp thêm", icon=":material/upload:", use_container_width=True):
             st.markdown("**Nạp thêm dữ liệu**")
-            tb_path = st.text_input("Đường dẫn tệp", value="data/vectors.txt", key="tb_load_path")
+            tb_path = st.text_input("Đường dẫn tệp", value=default_data_path, key="tb_load_path")
             tb_limit = st.selectbox(
                 "Số lượng từ",
                 options=[100, 500, 1000, 5000, 10000, 20000, 50000, -1],
@@ -330,7 +340,7 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                             # Ghi lưu bền vững vào file vectors.txt qua TextVectorStorage
                             try:
                                 storage = TextVectorStorage(
-                                    file_path="data/vectors.txt", expected_dim=manager.dimension or 50
+                                    file_path=default_data_path, expected_dim=manager.dimension or 50
                                 )
                                 storage.append_vector(label=tb_add_lbl.strip(), values=vals)
                             except Exception:

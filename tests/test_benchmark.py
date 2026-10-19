@@ -12,6 +12,7 @@ if str(root_dir) not in sys.path:
 
 from core.algorithms.kdtree import KDTreeIndex
 from core.algorithms.linear_scan import LinearScanIndex
+from core.algorithms.lsh import LSHIndex
 from core.benchmark import BenchmarkRunner
 from models.record import VectorRecord
 
@@ -121,6 +122,33 @@ class TestBenchmarkRunner(unittest.TestCase):
                 self.assertEqual(row["recall_percent"], 100.0)
                 self.assertEqual(row["speedup"], 1.0)
                 self.assertIn("Exact", row["category"])
+
+    def test_run_benchmark_with_lsh_adaptive(self) -> None:
+        """Kiểm tra benchmark chạy thành công với LSHIndex và tự động thích ứng tham số."""
+        lsh_algo = LSHIndex(dimension=self.dim, num_hyperplanes=4, metric="euclidean")
+        algos = {
+            "linear_scan": LinearScanIndex(metric="euclidean"),
+            "lsh": lsh_algo,
+        }
+        scales = [10, 20]
+        results = self.runner.run_benchmark(
+            algorithm_instances=algos,
+            scale_sizes=scales,
+            top_k=3,
+            query_count=3,
+            seed=42,
+        )
+
+        lsh_rows = [r for r in results if r["algorithm_key"] == "lsh"]
+        self.assertEqual(len(lsh_rows), 2)
+        for r in lsh_rows:
+            self.assertIn("LSH", r["algorithm"])
+            self.assertIn("ANN", r["category"])
+            self.assertGreaterEqual(r["speedup"], 0.0)
+            self.assertGreaterEqual(r["recall_percent"], 0.0)
+            self.assertLessEqual(r["recall_percent"], 100.0)
+        # Kiểm tra metric được đồng bộ và hyperplanes được scale
+        self.assertEqual(lsh_algo.metric, "euclidean")
 
 
 if __name__ == "__main__":

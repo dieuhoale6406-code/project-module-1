@@ -197,7 +197,7 @@ render_search_tab(st.session_state["manager"])
 
     def test_mutations_clear_search_and_comparison_results(self):
         for mutation in ("update", "delete_add", "delete_all"):
-            for button_label in ("Tìm kiếm", "So sánh 5 thuật toán"):
+            for button_label in ("Tìm kiếm", "So sánh 4 thuật toán"):
                 with self.subTest(mutation=mutation, button=button_label):
                     app, _ = self._run_search(button_label)
                     manager = app.session_state["manager"]
@@ -218,7 +218,7 @@ render_search_tab(st.session_state["manager"])
                     )
 
     def test_unchanged_dataset_keeps_cached_results(self):
-        for button_label in ("Tìm kiếm", "So sánh 5 thuật toán"):
+        for button_label in ("Tìm kiếm", "So sánh 4 thuật toán"):
             with self.subTest(button=button_label):
                 app, result_key = self._run_search(button_label)
                 cached = app.session_state[result_key]

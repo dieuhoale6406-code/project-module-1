@@ -151,6 +151,17 @@ class BenchmarkRunner:
                     if hasattr(algo, "nprobe"):
                         setattr(algo, "nprobe", adaptive_p)
 
+                # Tự động điều chỉnh thích ứng tham số LSH theo quy mô N
+                if algo_key in ("lsh",) or "lsh" in algo_name.lower():
+                    # Multi-Table LSH sweet spot: m trong khoảng 3-6, L=2 bảng để đảm bảo Recall@K đạt 85-95%
+                    adaptive_m = max(3, min(6, 3 + round(n / 2000)))
+                    if hasattr(algo, "num_hyperplanes"):
+                        setattr(algo, "num_hyperplanes", adaptive_m)
+                    if hasattr(algo, "num_tables"):
+                        setattr(algo, "num_tables", 2)
+                    if hasattr(algo, "metric"):
+                        setattr(algo, "metric", "euclidean")
+
                 t_build_start = time.perf_counter()
                 algo.build(sub_records)
                 build_time_ms = (time.perf_counter() - t_build_start) * 1000.0

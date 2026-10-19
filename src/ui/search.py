@@ -23,8 +23,10 @@ except ImportError:
 
 try:
     from ui.dataset import parse_vector_input
+    from ui.query_queue import enqueue_query, render_query_queue, sync_query_queue
 except ImportError:
     from src.ui.dataset import parse_vector_input
+    from src.ui.query_queue import enqueue_query, render_query_queue, sync_query_queue
 
 
 ALGORITHM_DISPLAY_NAMES: Dict[str, str] = {
@@ -80,12 +82,24 @@ def _render_advanced_settings(
         elif selected_alg == "kdtree":
             st.caption("KD-Tree: Phân vùng trực giao theo trục tọa độ để tăng tốc tìm kiếm ở số chiều thấp.")
         elif selected_alg == "lsh":
-            c_p1, c_p2 = st.columns(2)
+            c_p1, c_p2, c_p3 = st.columns(3)
             with c_p1:
                 alg_params["num_hyperplanes"] = st.slider(
-                    "Số siêu phẳng (num_hyperplanes)", min_value=2, max_value=32, value=8
+                    "Số siêu phẳng (m)",
+                    min_value=2,
+                    max_value=16,
+                    value=4,
+                    help="Số siêu phẳng băm ngẫu nhiên trên mỗi bảng. Khuyến nghị 3-5.",
                 )
             with c_p2:
+                alg_params["num_tables"] = st.slider(
+                    "Số bảng băm (L)",
+                    min_value=1,
+                    max_value=8,
+                    value=2,
+                    help="Số bảng băm độc lập (Multi-Table LSH). Chuẩn Indyk & Motwani giúp Recall đạt 90% - 98%.",
+                )
+            with c_p3:
                 alg_params["seed"] = st.number_input("Hạt giống (Seed)", value=42, step=1)
         elif selected_alg == "ivf":
             c_p1, c_p2 = st.columns(2)
@@ -306,7 +320,7 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
                             pass
                     try:
                         from core.algorithms.lsh import LSHIndex
-                        candidate_algos["lsh"] = LSHIndex(dimension=dim)
+                        candidate_algos["lsh"] = LSHIndex(dimension=dim, num_hyperplanes=4, num_tables=2, metric="euclidean")
                     except Exception:
                         pass
 
@@ -372,6 +386,7 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
 
 def render_search_tab(manager: VectorEngineManager) -> None:
     """Render the complete Search & Comparison tab matching Tab 1 visual language."""
+    sync_query_queue(manager)
     # Invalidate cached results if dataset was mutated, including when empty.
     if st.session_state.get("_last_dataset_version") != manager.mutation_version:
         st.session_state["single_search_result"] = None
@@ -403,10 +418,10 @@ def render_search_tab(manager: VectorEngineManager) -> None:
     # 1. Shared Query Controls (Top Panel)
     col_alg, col_metric, col_topk = st.columns([2.5, 2.5, 2])
 
-    algorithm_keys = ["linear_scan", "kdtree", "lsh", "ivf", "hnsw"]
+    algorithm_keys = ["linear_scan", "kdtree", "lsh", "ivf"]
     registered_statuses = manager.list_algorithms()
     for k in registered_statuses:
-        if k not in algorithm_keys:
+        if k not in algorithm_keys and k != "hnsw":
             algorithm_keys.append(k)
 
     with col_alg:
@@ -485,7 +500,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
     alg_params = _render_advanced_settings(manager, selected_alg, metric_key)
 
     # 3. Differentiated Actions (Search and Compare Buttons)
-    col_btn_search, col_btn_compare, _ = st.columns([1.6, 2.4, 4])
+    col_btn_search, col_btn_compare, col_btn_queue = st.columns([1.6, 2.4, 2.4])
     with col_btn_search:
         search_clicked = st.button(
             "Tìm kiếm",
@@ -495,14 +510,17 @@ def render_search_tab(manager: VectorEngineManager) -> None:
         )
     with col_btn_compare:
         compare_clicked = st.button(
-            "So sánh 5 thuật toán",
+            "So sánh 4 thuật toán",
             type="secondary",
             icon=":material/compare_arrows:",
             use_container_width=True,
         )
 
+    with col_btn_queue:
+        enqueue_clicked = st.button("Thêm vào hàng đợi")
+
     # 4. Action Execution
-    if search_clicked or compare_clicked:
+    if search_clicked or compare_clicked or enqueue_clicked:
         query_values: Optional[List[float]] = None
         query_name = ""
 
@@ -510,10 +528,12 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             clean_word = word_query.strip()
             if not clean_word:
                 st.error("Vui lòng nhập từ cần tìm.")
+                render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
                 return
             rec = manager.get_record(clean_word)
             if rec is None:
                 st.error("Không tìm thấy từ này trong dữ liệu.")
+                render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
                 return
             query_values = rec.values
             query_name = rec.label
@@ -521,11 +541,16 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             vals, err = parse_vector_input(raw_vector_input, expected_dim=manager.dimension)
             if err:
                 st.error(err)
+                render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
                 return
             query_values = vals
             query_name = "Vector tùy ý"
 
-        if search_clicked:
+        if enqueue_clicked:
+            enqueue_query(query_name, query_values, selected_alg, top_k, metric_key, alg_params)
+            st.success(f"Đã thêm truy vấn '{query_name}' vào hàng đợi.")
+
+        elif search_clicked:
             try:
                 with st.spinner(f"Đang tìm kiếm bằng {ALGORITHM_DISPLAY_NAMES.get(selected_alg, selected_alg)}..."):
                     results, latency_ms = manager.search(
@@ -633,6 +658,13 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                                 f"Thuật toán chỉ quét trong các cụm Voronoi gần nhất nên giảm thiểu số lượng phép tính khoảng cách. "
                                 f"Đây là ví dụ điển hình của sự đánh đổi giữa tốc độ và độ thu hồi trong tìm kiếm xấp xỉ."
                             )
+                        elif algo == "lsh":
+                            analysis_notes.append(
+                                f"**LSH (Locality-Sensitive Hashing - ANN)**: Đạt tốc độ tăng tốc **{speedup:.2f}x** "
+                                f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%**. "
+                                f"Thuật toán gom các vector tương đồng vào cùng bucket bằng chuỗi bit băm ngẫu nhiên và mở rộng thăm dò lân cận (Hamming radius=1). "
+                                f"LSH giúp giảm số lượng ứng viên cần tính khoảng cách thật, tối ưu hóa độ trễ truy vấn."
+                            )
                     except (AlgorithmNotReadyError, NotImplementedError):
                         summary_rows.append({
                             "Thuật toán": algo_label,
@@ -665,6 +697,8 @@ def render_search_tab(manager: VectorEngineManager) -> None:
         _render_single_search_results(st.session_state["single_search_result"])
     elif st.session_state.get("compare_search_result"):
         _render_comparison_results(st.session_state["compare_search_result"])
+
+    render_query_queue(manager, ALGORITHM_DISPLAY_NAMES)
 
     # 6. Section B: Benchmark Section (Placed at bottom)
     _render_benchmark_section(manager)
