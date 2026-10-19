@@ -142,6 +142,15 @@ class BenchmarkRunner:
                     category = "ANN (Xấp xỉ)"
 
                 # a. Bấm giờ xây dựng chỉ mục (Build Time)
+                # Tự động điều chỉnh thích ứng tham số IVF theo quy mô N (Adaptive Scaling)
+                if algo_key in ("ivf",) or "ivf" in algo_name.lower():
+                    adaptive_c = min(n, max(4, round(math.sqrt(n))))
+                    adaptive_p = max(1, round(0.2 * adaptive_c))
+                    if hasattr(algo, "num_clusters"):
+                        setattr(algo, "num_clusters", adaptive_c)
+                    if hasattr(algo, "nprobe"):
+                        setattr(algo, "nprobe", adaptive_p)
+
                 t_build_start = time.perf_counter()
                 algo.build(sub_records)
                 build_time_ms = (time.perf_counter() - t_build_start) * 1000.0

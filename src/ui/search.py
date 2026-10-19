@@ -207,20 +207,19 @@ def _render_comparison_results(data: Dict[str, Any]) -> None:
     """Render 5-algorithm comparison summary table and individual Top-K inspector."""
     st.markdown("---")
     st.caption(
-        f"Đối chiếu 5 thuật toán cho '{data['query_name']}' | "
+        f"Đối chiếu các thuật toán cho '{data['query_name']}' | "
         f"Độ đo: {'Cosine' if data['metric'] == 'cosine' else 'Euclidean'} | "
         f"Top-K: {data['top_k']} | Chuẩn: Linear Scan (Ground Truth)"
     )
 
     st.dataframe(data["summary_rows"], use_container_width=True, hide_index=True)
 
-    # Dynamic Trade-off analysis notes calculated from actual run metrics
+    # Dynamic Trade-off analysis notes (thu gọn trong expander để giao diện sạch sẽ, chỉ mở khi cần thuyết trình)
     analysis_notes = data.get("analysis_notes", [])
     if analysis_notes:
-        with st.container():
-            st.markdown("##### Phân tích đánh đổi (Speedup vs Recall Trade-off)")
+        with st.expander("Phân tích đánh đổi & Lý giải kết quả (Trade-off Insights)", expanded=False):
             for note in analysis_notes:
-                st.info(note)
+                st.markdown(f"- {note}")
 
     # Detailed Top-K inspection per algorithm
     detail_dict = data.get("detail_results", {})
@@ -310,11 +309,6 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
                     try:
                         from core.algorithms.lsh import LSHIndex
                         candidate_algos["lsh"] = LSHIndex(dimension=dim)
-                    except Exception:
-                        pass
-                    try:
-                        from core.algorithms.hnsw import HNSWIndex
-                        candidate_algos["hnsw"] = HNSWIndex(dimension=dim)
                     except Exception:
                         pass
 
@@ -574,15 +568,14 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             detail_results: Dict[str, Any] = {}
             analysis_notes: List[str] = []
 
-            algo_categories = {
-                "linear_scan": "Exact (Toàn bộ)",
-                "kdtree": "Exact (Phân vùng trục)",
-                "ivf": "ANN (Cắt tỉa Voronoi)",
-                "lsh": "ANN (Băm ngẫu nhiên)",
-                "hnsw": "ANN (Đồ thị đa tầng)",
+            algo_display_names = {
+                "linear_scan": "Linear Scan (Exact)",
+                "kdtree": "KD-Tree (Exact)",
+                "ivf": "IVF-Flat (ANN)",
+                "lsh": "LSH (ANN)",
             }
 
-            with st.spinner("Đang chạy đối sánh 5 thuật toán..."):
+            with st.spinner("Đang chạy đối sánh các thuật toán..."):
                 # 1. Ground Truth via Linear Scan
                 gt_results: List[Tuple[Any, float]] = []
                 gt_latency = 0.0
@@ -592,9 +585,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     )
                     gt_ids = set(r.id for r, _ in gt_results)
                     summary_rows.append({
-                        "Thuật toán": "Linear Scan",
-                        "Bản chất": algo_categories["linear_scan"],
-                        "Trạng thái": "Sẵn sàng (Ground Truth)",
+                        "Thuật toán": algo_display_names["linear_scan"],
                         "Thời gian (ms)": f"{gt_latency:.2f}",
                         "Tốc độ (Speedup)": "1.00x (Chuẩn)",
                         "Recall@K": "100.0%",
@@ -604,18 +595,16 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     st.error("Không thể thực hiện đối chiếu Ground Truth với Linear Scan.")
                     return
 
-                # 2. Evaluate remaining 4 algorithms
-                for algo in ["kdtree", "lsh", "ivf", "hnsw"]:
-                    algo_label = ALGORITHM_DISPLAY_NAMES.get(algo, algo)
-                    algo_cat = algo_categories.get(algo, "ANN")
+                # 2. Evaluate candidate algorithms (bỏ HNSW theo yêu cầu tối ưu hóa)
+                for algo in ["kdtree", "lsh", "ivf"]:
+                    algo_label = algo_display_names.get(algo, algo.upper())
                     algo_metrics = manager.get_supported_metrics(algo)
 
                     if metric_key not in algo_metrics:
+                        metric_label = "Cosine" if metric_key == "cosine" else "Euclidean"
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Bản chất": algo_cat,
-                            "Trạng thái": "Không hỗ trợ độ đo đã chọn",
-                            "Thời gian (ms)": "—",
+                            "Thời gian (ms)": f"Không hỗ trợ {metric_label}",
                             "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })
@@ -634,8 +623,6 @@ def render_search_tab(manager: VectorEngineManager) -> None:
 
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Bản chất": algo_cat,
-                            "Trạng thái": "Sẵn sàng",
                             "Thời gian (ms)": f"{cand_lat:.2f}",
                             "Tốc độ (Speedup)": f"{speedup:.2f}x",
                             "Recall@K": f"{recall_val:.1f}%",
@@ -645,7 +632,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                         if algo == "kdtree":
                             dim_info = f"d={manager.dimension}" if manager.dimension else "không gian nhiều chiều"
                             analysis_notes.append(
-                                f"**KD-Tree ({algo_cat})**: Recall đạt **{recall_val:.1f}%** (chính xác tuyệt đối), "
+                                f"**KD-Tree (Exact)**: Recall đạt **{recall_val:.1f}%** (chính xác tuyệt đối), "
                                 f"tốc độ đạt **{speedup:.2f}x** so với Linear Scan ({cand_lat:.2f} ms vs {gt_latency:.2f} ms). "
                                 f"Tại {dim_info}, do hiệu ứng Lời nguyền số chiều (Curse of Dimensionality), "
                                 f"hình cầu lân cận giao cắt với phần lớn các siêu phẳng phân chia nên cây phải duyệt lại (backtrack) "
@@ -654,7 +641,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                         elif algo == "ivf":
                             nprobe_str = f"nprobe = {search_kwargs.get('nprobe', 2)}" if "nprobe" in search_kwargs else "nprobe mặc định"
                             analysis_notes.append(
-                                f"**IVF-Flat ({algo_cat})**: Đạt tốc độ tăng tốc **{speedup:.2f}x** "
+                                f"**IVF-Flat (ANN)**: Đạt tốc độ tăng tốc **{speedup:.2f}x** "
                                 f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%** ({nprobe_str}). "
                                 f"Thuật toán chỉ quét trong các cụm Voronoi gần nhất nên giảm thiểu số lượng phép tính khoảng cách. "
                                 f"Đây là ví dụ điển hình của sự đánh đổi giữa tốc độ và độ thu hồi trong tìm kiếm xấp xỉ."
@@ -662,9 +649,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     except (AlgorithmNotReadyError, NotImplementedError):
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Bản chất": algo_cat,
-                            "Trạng thái": "Chưa sẵn sàng",
-                            "Thời gian (ms)": "—",
+                            "Thời gian (ms)": "Chưa sẵn sàng",
                             "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })
@@ -672,9 +657,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     except Exception:
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Bản chất": algo_cat,
-                            "Trạng thái": "Lỗi khi tìm kiếm",
-                            "Thời gian (ms)": "—",
+                            "Thời gian (ms)": "Lỗi thực thi",
                             "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })

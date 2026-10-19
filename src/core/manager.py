@@ -195,6 +195,61 @@ class VectorEngineManager:
 
         return record
 
+    def add_records_batch(
+        self,
+        items: List[Tuple[str, List[float]]],
+        track_undo: bool = False,
+    ) -> Tuple[int, int]:
+        """
+        Nạp hàng loạt (Bulk Ingestion) danh sách (label, values) vào manager.
+        Tối ưu hóa:
+        - Kiểm tra trùng lặp nhanh qua set/dict
+        - Tự động sinh ID theo chuỗi liên tục
+        - Chỉ cập nhật version và xóa index cache duy nhất 1 lần ở cuối
+        Trả về (loaded_count, skipped_count).
+        """
+        if not items:
+            return 0, 0
+
+        loaded = 0
+        skipped = 0
+        next_idx = len(self._records) + 1
+
+        for label, values in items:
+            if not label or not str(label).strip() or not values:
+                skipped += 1
+                continue
+
+            norm_label = str(label).strip().lower()
+            if norm_label in self._label_to_id:
+                skipped += 1
+                continue
+
+            val_dim = len(values)
+            if self._dimension is not None and val_dim != self._dimension:
+                skipped += 1
+                continue
+
+            clean_id = f"VEC_{next_idx:05d}"
+            while clean_id in self._records:
+                next_idx += 1
+                clean_id = f"VEC_{next_idx:05d}"
+
+            record = VectorRecord(record_id=clean_id, label=norm_label, values=values)
+            self._records[clean_id] = record
+            self._label_to_id[norm_label] = clean_id
+
+            if self._dimension is None:
+                self._dimension = val_dim
+
+            next_idx += 1
+            loaded += 1
+
+        if loaded > 0:
+            self._invalidate_indexes()
+
+        return loaded, skipped
+
     def delete_record(self, label: str, track_undo: bool = True) -> bool:
         """Delete a vector record by label or ID. Return True if deleted."""
         target_rec = self.get_record(label)

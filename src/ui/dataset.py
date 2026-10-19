@@ -91,6 +91,9 @@ def load_glove_subset(
     storage = TextVectorStorage(file_path=str(path), expected_dim=expected_dim)
     vectors = storage.load_vectors(limit=limit)
 
+    if hasattr(manager, "add_records_batch"):
+        return manager.add_records_batch(vectors, track_undo=False)
+
     loaded_count = 0
     skipped_count = 0
 
