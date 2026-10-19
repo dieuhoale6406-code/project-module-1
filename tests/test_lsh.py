@@ -252,6 +252,29 @@ class TestLSHIndex(unittest.TestCase):
         for _, distance in results:
             self.assertAlmostEqual(distance, 0)
 
+    def test_metric_validation(self):
+        """Kiểm tra tính hợp lệ của tham số metric."""
+        for valid_metric in ("cosine", "COSINE", "euclidean", "EUCLIDEAN_DISTANCE"):
+            index = LSHIndex(dimension=2, metric=valid_metric)
+            self.assertIn("cosine" if "cosine" in valid_metric.lower() else "euclidean", index.metric)
+
+        with self.assertRaises(ValueError):
+            LSHIndex(dimension=2, metric="manhattan")
+
+    def test_search_euclidean_distance_computes_exact_l2(self):
+        """Kiểm tra tìm kiếm LSH ở chế độ euclidean trả về khoảng cách Euclidean chính xác."""
+        a = VectorRecord("A", "a", [3.0, 0.0])
+        b = VectorRecord("B", "b", [0.0, 4.0])
+        index = LSHIndex(dimension=2, num_hyperplanes=2, metric="euclidean", seed=42)
+        index.build([a, b])
+
+        results = index.search([3.0, 0.0], top_k=2)
+        self.assertGreater(len(results), 0)
+        # Vector A trùng query [3, 0] nên khoảng cách Euclidean phải xấp xỉ 0.0
+        top_rec, top_dist = results[0]
+        self.assertEqual(top_rec.id, "A")
+        self.assertAlmostEqual(top_dist, 0.0, places=5)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

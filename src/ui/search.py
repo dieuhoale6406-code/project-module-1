@@ -308,7 +308,7 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
                             pass
                     try:
                         from core.algorithms.lsh import LSHIndex
-                        candidate_algos["lsh"] = LSHIndex(dimension=dim)
+                        candidate_algos["lsh"] = LSHIndex(dimension=dim, metric="euclidean")
                     except Exception:
                         pass
 
@@ -645,6 +645,13 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                                 f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%** ({nprobe_str}). "
                                 f"Thuật toán chỉ quét trong các cụm Voronoi gần nhất nên giảm thiểu số lượng phép tính khoảng cách. "
                                 f"Đây là ví dụ điển hình của sự đánh đổi giữa tốc độ và độ thu hồi trong tìm kiếm xấp xỉ."
+                            )
+                        elif algo == "lsh":
+                            analysis_notes.append(
+                                f"**LSH (Locality-Sensitive Hashing - ANN)**: Đạt tốc độ tăng tốc **{speedup:.2f}x** "
+                                f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%**. "
+                                f"Thuật toán gom các vector tương đồng vào cùng bucket bằng chuỗi bit băm ngẫu nhiên và mở rộng thăm dò lân cận (Hamming radius=1). "
+                                f"LSH giúp giảm số lượng ứng viên cần tính khoảng cách thật, tối ưu hóa độ trễ truy vấn."
                             )
                     except (AlgorithmNotReadyError, NotImplementedError):
                         summary_rows.append({

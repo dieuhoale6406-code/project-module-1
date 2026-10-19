@@ -1,5 +1,5 @@
 import math
-from ..metrics import cosine_similarity
+from ..metrics import cosine_similarity, euclidean_distance
 
 import random
 from typing import Any, Dict, List, Tuple
@@ -9,15 +9,33 @@ from .base import BaseVectorIndex
 class LSHIndex(BaseVectorIndex):
     """
     Thuật toán 3: Locality-Sensitive Hashing (Indyk & Motwani, 1998 / Charikar, 2002)
-    Kỹ thuật: Random Hyperplane (SimHash) cho góc Cosine Similarity.
+    Kỹ thuật: Random Hyperplane (SimHash) cho góc Cosine Similarity và Euclidean Distance.
     Độ phức tạp: Build O(N * m * d), Search O(m * d + B * d) với B là kích thước bucket.
     """
 
-    def __init__(self, dimension: int, num_hyperplanes: int = 8, seed: int = 42) -> None:
+    def __init__(
+        self,
+        dimension: int,
+        num_hyperplanes: int = 8,
+        seed: int = 42,
+        metric: str = "cosine",
+    ) -> None:
         super().__init__(name="LSH (Random Hyperplane)")
+        if dimension <= 0:
+            raise ValueError(f"dimension phải là số nguyên dương, nhận: {dimension}")
+        if num_hyperplanes <= 0:
+            raise ValueError(f"num_hyperplanes phải là số nguyên dương, nhận: {num_hyperplanes}")
+
+        norm_metric = metric.lower().strip()
+        if norm_metric not in ("cosine", "cosine_distance", "euclidean", "euclidean_distance"):
+            raise ValueError(
+                f"LSHIndex chỉ hỗ trợ metric 'cosine' hoặc 'euclidean', nhận: {metric}"
+            )
+
         self.dimension = dimension
         self.num_hyperplanes = num_hyperplanes
         self.seed = seed
+        self.metric = norm_metric
         # Danh sách m vector pháp tuyến ngẫu nhiên đại diện cho m siêu phẳng
         self.hyperplanes: List[List[float]] = []
         # Bảng băm: chuỗi_bit_hash -> Danh sách các VectorRecord
@@ -182,19 +200,24 @@ class LSHIndex(BaseVectorIndex):
                 k=sample_size,
             )
 
-        # 4. Chấm điểm chính xác trên tập ứng viên.
+        # 4. Chấm điểm chính xác trên tập ứng viên theo độ đo cấu hình.
         results = []
+        is_cosine = self.metric in ("cosine", "cosine_distance")
 
-        for record in candidate_records:
-            similarity = cosine_similarity(
-                query_values,
-                record.values,
-                query_norm,
-                record.norm,
-            )
-
-            distance = 1.0 - similarity
-            results.append((record, distance))
+        if is_cosine:
+            for record in candidate_records:
+                similarity = cosine_similarity(
+                    query_values,
+                    record.values,
+                    query_norm,
+                    record.norm,
+                )
+                distance = 1.0 - similarity
+                results.append((record, distance))
+        else:
+            for record in candidate_records:
+                dist = euclidean_distance(query_values, record.values)
+                results.append((record, dist))
 
         # 5. Khoảng cách càng nhỏ càng tốt.
         results.sort(key=lambda item: item[1])

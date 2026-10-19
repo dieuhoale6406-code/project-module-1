@@ -23,7 +23,7 @@ _METRIC_ALIASES = {"cosine_distance": "cosine", "euclidean_distance": "euclidean
 # Provisional metrics inferred from teammate stubs; subject to final confirmation.
 _TEAM_ALGORITHMS = (
     ("kdtree", "kdtree", "KDTreeIndex", ("euclidean",)),
-    ("lsh", "lsh", "LSHIndex", ("cosine",)),
+    ("lsh", "lsh", "LSHIndex", ("cosine", "euclidean")),
     ("ivf", "ivf", "IVFIndex", ("euclidean",)),
     ("hnsw", "hnsw", "HNSWIndex", ("euclidean",)),
 )
