@@ -418,10 +418,10 @@ def render_search_tab(manager: VectorEngineManager) -> None:
     # 1. Shared Query Controls (Top Panel)
     col_alg, col_metric, col_topk = st.columns([2.5, 2.5, 2])
 
-    algorithm_keys = ["linear_scan", "kdtree", "lsh", "ivf", "hnsw"]
+    algorithm_keys = ["linear_scan", "kdtree", "lsh", "ivf"]
     registered_statuses = manager.list_algorithms()
     for k in registered_statuses:
-        if k not in algorithm_keys:
+        if k not in algorithm_keys and k != "hnsw":
             algorithm_keys.append(k)
 
     with col_alg:
@@ -510,7 +510,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
         )
     with col_btn_compare:
         compare_clicked = st.button(
-            "So sánh 5 thuật toán",
+            "So sánh 4 thuật toán",
             type="secondary",
             icon=":material/compare_arrows:",
             use_container_width=True,
