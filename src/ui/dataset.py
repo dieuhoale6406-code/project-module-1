@@ -176,12 +176,51 @@ def render_dataset_tab(manager: VectorEngineManager) -> None:
                 unsafe_allow_html=True,
             )
 
-            # Primary action: Nạp nhanh 1.000 từ mẫu
-            if st.button("Nạp 1.000 từ mẫu", type="primary", icon=":material/bolt:", use_container_width=True):
+            # Tùy chọn số lượng trực tiếp trên giao diện
+            col_sel, col_load_btn = st.columns([1.6, 2.4])
+            with col_sel:
+                quick_limit = st.selectbox(
+                    "Số lượng từ",
+                    options=[1000, 2000, 5000, 10000, -1],
+                    index=2,
+                    format_func=lambda x: "Tất cả (10k từ)" if x == -1 else f"{x:,} từ",
+                    label_visibility="collapsed",
+                    key="quick_select_limit",
+                )
+            with col_load_btn:
+                limit_label = "Tất cả" if quick_limit == -1 else f"{quick_limit:,} từ"
+                load_direct_clicked = st.button(
+                    f"Nạp {limit_label} mẫu",
+                    type="primary",
+                    icon=":material/bolt:",
+                    use_container_width=True,
+                    key="quick_load_btn",
+                )
+
+            # Thanh nạp nhanh 1-chạm
+            st.caption("Hoặc nạp nhanh 1-chạm:")
+            col_q1, col_q2, col_q3 = st.columns(3)
+            q1_clicked = col_q1.button("1.000 từ", use_container_width=True, key="btn_q_1000")
+            q2_clicked = col_q2.button("5.000 từ (Chuẩn)", use_container_width=True, key="btn_q_5000")
+            q3_clicked = col_q3.button("10.000 từ", use_container_width=True, key="btn_q_10000")
+
+            chosen_limit = None
+            if load_direct_clicked:
+                chosen_limit = None if quick_limit == -1 else int(quick_limit)
+            elif q1_clicked:
+                chosen_limit = 1000
+            elif q2_clicked:
+                chosen_limit = 5000
+            elif q3_clicked:
+                chosen_limit = 10000
+
+            if chosen_limit is not None or load_direct_clicked:
+                actual_lim = chosen_limit if chosen_limit is not None else (None if quick_limit == -1 else int(quick_limit))
+                limit_text = f"{actual_lim:,} từ" if actual_lim else "tất cả"
                 try:
-                    with st.spinner("Đang nạp 1.000 từ vựng mẫu..."):
+                    with st.spinner(f"Đang nạp {limit_text} vựng mẫu..."):
                         loaded, skipped = load_glove_subset(
-                            manager, default_data_path, limit=1000, expected_dim=50
+                            manager, default_data_path, limit=actual_lim, expected_dim=50
                         )
                     if loaded == 0 and skipped > 0:
                         set_flash_message(

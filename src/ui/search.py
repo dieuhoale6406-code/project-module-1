@@ -66,115 +66,143 @@ def compute_top_k_bounds(
     return 1, max_k, val_k
 
 
+def _render_algo_prepare_button(
+    manager: VectorEngineManager, algo_key: str, metric_key: str, params: Dict[str, Any]
+) -> None:
+    """Render preparation status badge and manual prepare button for a specific algorithm."""
+    effective_metric = "euclidean" if algo_key in ("kdtree", "ivf") else metric_key
+    cached_bld_ms = manager.get_build_time_ms(algo_key, effective_metric)
+    raw_status = manager.get_algorithm_status(algo_key)
+
+    if cached_bld_ms is not None:
+        status_text = f":green[● Đã chuẩn bị] ({cached_bld_ms:.2f} ms)"
+    elif raw_status in ("not_implemented", "unavailable"):
+        status_text = ":orange[● Chưa sẵn sàng]"
+    else:
+        status_text = ":gray[● Sẵn sàng (Tự động chuẩn bị khi tìm kiếm)]"
+
+    c_info, c_btn = st.columns([3, 1])
+    with c_info:
+        st.markdown(f"Trạng thái: {status_text}")
+    with c_btn:
+        btn_prep = st.button(
+            "Chuẩn bị",
+            key=f"btn_prep_{algo_key}",
+            type="secondary",
+            icon=":material/tune:",
+            use_container_width=True,
+            help=f"Chuẩn bị trước cho thuật toán {ALGORITHM_DISPLAY_NAMES.get(algo_key, algo_key)}.",
+        )
+    if btn_prep:
+        try:
+            with st.spinner(f"Đang chuẩn bị {ALGORITHM_DISPLAY_NAMES.get(algo_key, algo_key)}..."):
+                bld_ms = manager.build_index(algo_key, metric=effective_metric, **params)
+            st.success(f"Chuẩn bị thành công trong **{bld_ms:.2f} ms**.")
+            st.rerun()
+        except (AlgorithmNotReadyError, NotImplementedError):
+            st.warning(f"Thuật toán **{ALGORITHM_DISPLAY_NAMES.get(algo_key, algo_key)}** hiện chưa sẵn sàng.")
+        except Exception as exc:
+            st.error(f"Không thể chuẩn bị thuật toán: {exc}")
+
+
 def _render_advanced_settings(
     manager: VectorEngineManager, selected_alg: str, metric_key: str
-) -> Dict[str, Any]:
-    """Render collapsed advanced configuration with algorithm parameters and compact preparation control."""
-    alg_params: Dict[str, Any] = {}
+) -> Dict[str, Dict[str, Any]]:
+    """Render collapsed advanced configuration with algorithm parameters for all 4 algorithms."""
+    all_alg_params: Dict[str, Dict[str, Any]] = {
+        "linear_scan": {},
+        "kdtree": {},
+        "ivf": {},
+        "lsh": {},
+    }
 
-    with st.expander("Cài đặt nâng cao", expanded=False):
-        # Algorithm-specific parameter tuning
-        if selected_alg == "linear_scan":
-            st.caption(
-                "Linear Scan: Duyệt tuần tự toàn bộ vector đối chiếu chuẩn (Ground Truth). "
-                "Không sử dụng chỉ mục phân vùng hay xấp xỉ."
-            )
-        elif selected_alg == "kdtree":
-            st.caption("KD-Tree: Phân vùng trực giao theo trục tọa độ để tăng tốc tìm kiếm ở số chiều thấp.")
-        elif selected_alg == "lsh":
-            c_p1, c_p2, c_p3 = st.columns(3)
-            with c_p1:
-                alg_params["num_hyperplanes"] = st.slider(
+    with st.expander("⚙️ Cài đặt nâng cao (Tham số thuật toán & Chuẩn bị chỉ mục)", expanded=False):
+        st.caption(
+            "Tùy chỉnh thông số chi tiết cho cả 4 thuật toán. "
+            "Khi bấm **So sánh 4 thuật toán**, hệ thống sẽ áp dụng đồng thời các thông số này "
+            "dưới cùng độ đo Euclidean để đảm bảo tính khách quan và nhất quán với kết quả thực nghiệm trong slide."
+        )
+
+        tab_ivf, tab_lsh, tab_kdtree, tab_linear = st.tabs([
+            "IVF-Flat (ANN)",
+            "LSH (Multi-Table ANN)",
+            "KD-Tree (Exact)",
+            "Linear Scan (Baseline)",
+        ])
+
+        with tab_ivf:
+            st.markdown("**Thuật toán IVF-Flat (Inverted File Index)**")
+            st.caption("Phân cụm không gian bằng K-Means và chỉ dò tìm trong các cụm tâm gần nhất.")
+            c_ivf1, c_ivf2 = st.columns(2)
+            with c_ivf1:
+                all_alg_params["ivf"]["num_clusters"] = st.slider(
+                    "Số cụm (num_clusters)",
+                    min_value=2,
+                    max_value=64,
+                    value=8,
+                    help="Số tâm cụm K-Means. Khuyến nghị chuẩn thực nghiệm: 8 cụm.",
+                    key="adv_ivf_clusters",
+                )
+            with c_ivf2:
+                all_alg_params["ivf"]["nprobe"] = st.slider(
+                    "Số cụm dò tìm (nprobe)",
+                    min_value=1,
+                    max_value=16,
+                    value=2,
+                    help="Số cụm gần nhất được quét khi truy vấn. Khuyến nghị chuẩn thực nghiệm: 2 cụm (Recall ~97%, Speedup ~3.5x).",
+                    key="adv_ivf_nprobe",
+                )
+            _render_algo_prepare_button(manager, "ivf", metric_key, all_alg_params["ivf"])
+
+        with tab_lsh:
+            st.markdown("**Thuật toán LSH (Locality-Sensitive Hashing)**")
+            st.caption("Băm ngẫu nhiên qua các siêu phẳng độc lập và gom nhóm theo bucket nhị phân.")
+            c_lsh1, c_lsh2, c_lsh3 = st.columns(3)
+            with c_lsh1:
+                all_alg_params["lsh"]["num_hyperplanes"] = st.slider(
                     "Số siêu phẳng (m)",
                     min_value=2,
                     max_value=16,
-                    value=4,
-                    help="Số siêu phẳng băm ngẫu nhiên trên mỗi bảng. Khuyến nghị 3-5.",
+                    value=8,
+                    help="Số siêu phẳng băm ngẫu nhiên trên mỗi bảng. Khuyến nghị chuẩn thực nghiệm: 8 (Recall ~76%, Speedup ~9.3x).",
+                    key="adv_lsh_hyperplanes",
                 )
-            with c_p2:
-                alg_params["num_tables"] = st.slider(
+            with c_lsh2:
+                all_alg_params["lsh"]["num_tables"] = st.slider(
                     "Số bảng băm (L)",
                     min_value=1,
                     max_value=8,
                     value=2,
-                    help="Số bảng băm độc lập (Multi-Table LSH). Chuẩn Indyk & Motwani giúp Recall đạt 90% - 98%.",
+                    help="Số bảng băm độc lập (Multi-Table LSH). Chuẩn thực nghiệm: 2 bảng.",
+                    key="adv_lsh_tables",
                 )
-            with c_p3:
-                alg_params["seed"] = st.number_input("Hạt giống (Seed)", value=42, step=1)
-        elif selected_alg == "ivf":
-            c_p1, c_p2 = st.columns(2)
-            with c_p1:
-                alg_params["num_clusters"] = st.slider(
-                    "Số cụm (num_clusters)", min_value=2, max_value=64, value=8
+            with c_lsh3:
+                all_alg_params["lsh"]["seed"] = st.number_input(
+                    "Hạt giống ngẫu nhiên (Seed)",
+                    value=42,
+                    step=1,
+                    help="Cố định seed để kết quả băm ngẫu nhiên tái lập chuẩn xác.",
+                    key="adv_lsh_seed",
                 )
-            with c_p2:
-                alg_params["nprobe"] = st.slider(
-                    "Số cụm dò tìm (nprobe)", min_value=1, max_value=16, value=2
-                )
-        elif selected_alg == "hnsw":
-            c_p1, c_p2, c_p3 = st.columns(3)
-            with c_p1:
-                alg_params["m"] = st.slider("M (liên kết/node)", min_value=4, max_value=32, value=8)
-            with c_p2:
-                alg_params["ef_construction"] = st.slider(
-                    "ef_construction", min_value=8, max_value=128, value=32
-                )
-            with c_p3:
-                alg_params["ef_search"] = st.slider("ef_search", min_value=4, max_value=64, value=16)
+            _render_algo_prepare_button(manager, "lsh", metric_key, all_alg_params["lsh"])
 
-        st.markdown("---")
-
-        # Compact manual preparation control
-        st.markdown("**Chuẩn bị thuật toán**")
-        if selected_alg == "linear_scan":
-            desc = (
-                "Linear Scan chuẩn bị dữ liệu trong bộ nhớ để tìm kiếm chính xác (Ground Truth). "
-                "Hệ thống sẽ tự động chuẩn bị khi tìm kiếm."
+        with tab_kdtree:
+            st.markdown("**Thuật toán KD-Tree (k-d Tree Exact Search)**")
+            st.caption(
+                "Phân vùng không gian bằng cây nhị phân trực giao trục tọa độ. "
+                "Cấu trúc cây được tự động tối ưu theo số chiều dữ liệu d (không cần tinh chỉnh tham số ngoài)."
             )
-        else:
-            desc = (
-                "Thuật toán sẽ tự động chuẩn bị khi tìm kiếm, hoặc bạn có thể bấm chuẩn bị trước tại đây."
+            _render_algo_prepare_button(manager, "kdtree", metric_key, all_alg_params["kdtree"])
+
+        with tab_linear:
+            st.markdown("**Thuật toán Linear Scan (Baseline Ground Truth)**")
+            st.caption(
+                "Duyệt tuần tự qua 100% dữ liệu để tìm kiếm Top-K chính xác tuyệt đối (Ground Truth). "
+                "Dữ liệu được nạp trực tiếp trong bộ nhớ."
             )
+            _render_algo_prepare_button(manager, "linear_scan", metric_key, all_alg_params["linear_scan"])
 
-        cached_bld_ms = manager.get_build_time_ms(selected_alg, metric_key)
-        raw_status = manager.get_algorithm_status(selected_alg)
-
-        if cached_bld_ms is not None:
-            status_text = f":green[● Đã chuẩn bị] ({cached_bld_ms:.2f} ms)"
-        elif raw_status in ("not_implemented", "unavailable"):
-            status_text = ":orange[● Chưa sẵn sàng]"
-        else:
-            status_text = ":gray[● Tự động chuẩn bị khi tìm kiếm]"
-
-        c_info, c_btn = st.columns([3, 1])
-        with c_info:
-            st.caption(desc)
-            st.markdown(f"Trạng thái: {status_text}")
-        with c_btn:
-            st.write("")
-            btn_prepare = st.button(
-                "Chuẩn bị",
-                type="secondary",
-                icon=":material/tune:",
-                use_container_width=True,
-                help=f"Chuẩn bị trước cho thuật toán {ALGORITHM_DISPLAY_NAMES.get(selected_alg, selected_alg)}.",
-            )
-
-        if btn_prepare:
-            try:
-                with st.spinner(f"Đang chuẩn bị {ALGORITHM_DISPLAY_NAMES.get(selected_alg, selected_alg)}..."):
-                    bld_ms = manager.build_index(selected_alg, metric=metric_key, **alg_params)
-                st.success(f"Chuẩn bị thành công trong **{bld_ms:.2f} ms**.")
-                st.rerun()
-            except (AlgorithmNotReadyError, NotImplementedError):
-                st.warning(
-                    f"Thuật toán **{ALGORITHM_DISPLAY_NAMES.get(selected_alg, selected_alg)}** "
-                    f"hiện chưa sẵn sàng."
-                )
-            except Exception:
-                st.error("Không thể chuẩn bị thuật toán. Vui lòng thử lại sau.")
-
-    return alg_params
+    return all_alg_params
 
 
 def _render_single_search_results(data: Dict[str, Any]) -> None:
@@ -219,8 +247,8 @@ def _render_comparison_results(data: Dict[str, Any]) -> None:
     """Render 5-algorithm comparison summary table and individual Top-K inspector."""
     st.markdown("---")
     st.caption(
-        f"Đối chiếu các thuật toán cho '{data['query_name']}' | "
-        f"Độ đo: {'Cosine' if data['metric'] == 'cosine' else 'Euclidean'} | "
+        f"Đối chiếu 4 thuật toán cho '{data['query_name']}' | "
+        f"Độ đo: {'Cosine' if data['metric'] == 'cosine' else 'Euclidean (Độ đo chung)'} | "
         f"Top-K: {data['top_k']} | Chuẩn: Linear Scan (Ground Truth)"
     )
 
@@ -315,12 +343,16 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
                         pass
                     if IVFIndex is not None:
                         try:
-                            candidate_algos["ivf"] = IVFIndex(dimension=dim)
+                            candidate_algos["ivf"] = IVFIndex(
+                                dimension=dim, num_clusters=8, nprobe=2, metric="euclidean"
+                            )
                         except Exception:
                             pass
                     try:
                         from core.algorithms.lsh import LSHIndex
-                        candidate_algos["lsh"] = LSHIndex(dimension=dim, num_hyperplanes=4, num_tables=2, metric="euclidean")
+                        candidate_algos["lsh"] = LSHIndex(
+                            dimension=dim, num_hyperplanes=8, num_tables=2, seed=42, metric="euclidean"
+                        )
                     except Exception:
                         pass
 
@@ -497,7 +529,8 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             )
 
     # 2. Advanced Settings (Collapsed Expander - Placed immediately below Query Controls)
-    alg_params = _render_advanced_settings(manager, selected_alg, metric_key)
+    all_alg_params = _render_advanced_settings(manager, selected_alg, metric_key)
+    current_alg_params = all_alg_params.get(selected_alg, {})
 
     # 3. Differentiated Actions (Search and Compare Buttons)
     col_btn_search, col_btn_compare, col_btn_queue = st.columns([1.6, 2.4, 2.4])
@@ -514,6 +547,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             type="secondary",
             icon=":material/compare_arrows:",
             use_container_width=True,
+            help="Tự động chuẩn bị chỉ mục và đối sánh đồng thời cả 4 thuật toán trên độ đo Euclidean.",
         )
 
     with col_btn_queue:
@@ -547,14 +581,14 @@ def render_search_tab(manager: VectorEngineManager) -> None:
             query_name = "Vector tùy ý"
 
         if enqueue_clicked:
-            enqueue_query(query_name, query_values, selected_alg, top_k, metric_key, alg_params)
+            enqueue_query(query_name, query_values, selected_alg, top_k, metric_key, current_alg_params)
             st.success(f"Đã thêm truy vấn '{query_name}' vào hàng đợi.")
 
         elif search_clicked:
             try:
                 with st.spinner(f"Đang tìm kiếm bằng {ALGORITHM_DISPLAY_NAMES.get(selected_alg, selected_alg)}..."):
                     results, latency_ms = manager.search(
-                        selected_alg, query_values, top_k=top_k, metric=metric_key, **alg_params
+                        selected_alg, query_values, top_k=top_k, metric=metric_key, **current_alg_params
                     )
                 bld_ms = manager.get_build_time_ms(selected_alg, metric_key)
                 st.session_state["single_search_result"] = {
@@ -587,18 +621,33 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                 "lsh": "LSH (ANN)",
             }
 
-            with st.spinner("Đang chạy đối sánh các thuật toán..."):
+            cmp_metric = "euclidean"
+            build_times: Dict[str, Optional[float]] = {}
+
+            with st.spinner("Đang chuẩn bị chỉ mục và đối sánh đồng thời 4 thuật toán (Độ đo Euclidean)..."):
+                # 0. Pre-build all 4 algorithms explicitly to strictly isolate build time from query search latency
+                for algo in ["linear_scan", "kdtree", "ivf", "lsh"]:
+                    params = all_alg_params.get(algo, {})
+                    try:
+                        bld_ms = manager.build_index(algo, metric=cmp_metric, **params)
+                        build_times[algo] = bld_ms
+                    except Exception:
+                        build_times[algo] = None
+
                 # 1. Ground Truth via Linear Scan
                 gt_results: List[Tuple[Any, float]] = []
                 gt_latency = 0.0
                 try:
                     gt_results, gt_latency = manager.search(
-                        "linear_scan", query_values, top_k=top_k, metric=metric_key
+                        "linear_scan", query_values, top_k=top_k, metric=cmp_metric
                     )
                     gt_ids = set(r.id for r, _ in gt_results)
+                    bld_val = build_times.get("linear_scan")
+                    bld_str = f"{bld_val:.2f} ms" if bld_val is not None else "Đã chuẩn bị"
                     summary_rows.append({
                         "Thuật toán": algo_display_names["linear_scan"],
-                        "Thời gian (ms)": f"{gt_latency:.2f}",
+                        "Thời gian dựng (Build)": bld_str,
+                        "Thời gian tìm kiếm (ms)": f"{gt_latency:.2f}",
                         "Tốc độ (Speedup)": "1.00x (Chuẩn)",
                         "Recall@K": "100.0%",
                     })
@@ -607,26 +656,16 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     st.error("Không thể thực hiện đối chiếu Ground Truth với Linear Scan.")
                     return
 
-                # 2. Evaluate candidate algorithms (bỏ HNSW theo yêu cầu tối ưu hóa)
-                for algo in ["kdtree", "lsh", "ivf"]:
+                # 2. Evaluate candidate algorithms (KD-Tree, IVF-Flat, LSH)
+                for algo in ["kdtree", "ivf", "lsh"]:
                     algo_label = algo_display_names.get(algo, algo.upper())
-                    algo_metrics = manager.get_supported_metrics(algo)
-
-                    if metric_key not in algo_metrics:
-                        metric_label = "Cosine" if metric_key == "cosine" else "Euclidean"
-                        summary_rows.append({
-                            "Thuật toán": algo_label,
-                            "Thời gian (ms)": f"Không hỗ trợ {metric_label}",
-                            "Tốc độ (Speedup)": "—",
-                            "Recall@K": "—",
-                        })
-                        detail_results[algo] = None
-                        continue
+                    search_kwargs = dict(all_alg_params.get(algo, {}))
+                    bld_val = build_times.get(algo)
+                    bld_str = f"{bld_val:.2f} ms" if bld_val is not None else "—"
 
                     try:
-                        search_kwargs = dict(alg_params) if algo == selected_alg else {}
                         cand_results, cand_lat = manager.search(
-                            algo, query_values, top_k=top_k, metric=metric_key, **search_kwargs
+                            algo, query_values, top_k=top_k, metric=cmp_metric, **search_kwargs
                         )
                         cand_ids = set(r.id for r, _ in cand_results)
                         hits = len(cand_ids & gt_ids)
@@ -635,7 +674,8 @@ def render_search_tab(manager: VectorEngineManager) -> None:
 
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Thời gian (ms)": f"{cand_lat:.2f}",
+                            "Thời gian dựng (Build)": bld_str,
+                            "Thời gian tìm kiếm (ms)": f"{cand_lat:.2f}",
                             "Tốc độ (Speedup)": f"{speedup:.2f}x",
                             "Recall@K": f"{recall_val:.1f}%",
                         })
@@ -648,27 +688,32 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                                 f"tốc độ đạt **{speedup:.2f}x** so với Linear Scan ({cand_lat:.2f} ms vs {gt_latency:.2f} ms). "
                                 f"Tại {dim_info}, do hiệu ứng Lời nguyền số chiều (Curse of Dimensionality), "
                                 f"hình cầu lân cận giao cắt với phần lớn các siêu phẳng phân chia nên cây phải duyệt lại (backtrack) "
-                                f"hầu hết các nhánh, khiến độ trễ tiệm cận duyệt toàn bộ."
+                                f"hầu hết các nhánh, khiến tốc độ tăng tốc khiêm tốn (~1.4x)."
                             )
                         elif algo == "ivf":
-                            nprobe_str = f"nprobe = {search_kwargs.get('nprobe', 2)}" if "nprobe" in search_kwargs else "nprobe mặc định"
+                            nprobe_val = search_kwargs.get("nprobe", 2)
+                            num_c_val = search_kwargs.get("num_clusters", 8)
                             analysis_notes.append(
                                 f"**IVF-Flat (ANN)**: Đạt tốc độ tăng tốc **{speedup:.2f}x** "
-                                f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%** ({nprobe_str}). "
-                                f"Thuật toán chỉ quét trong các cụm Voronoi gần nhất nên giảm thiểu số lượng phép tính khoảng cách. "
-                                f"Đây là ví dụ điển hình của sự đánh đổi giữa tốc độ và độ thu hồi trong tìm kiếm xấp xỉ."
+                                f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%** "
+                                f"(num_clusters={num_c_val}, nprobe={nprobe_val}). "
+                                f"Thuật toán chỉ quét trong {nprobe_val}/{num_c_val} cụm Voronoi gần nhất nên giảm mạnh số lượng phép tính khoảng cách."
                             )
                         elif algo == "lsh":
+                            m_val = search_kwargs.get("num_hyperplanes", 8)
+                            L_val = search_kwargs.get("num_tables", 2)
                             analysis_notes.append(
                                 f"**LSH (Locality-Sensitive Hashing - ANN)**: Đạt tốc độ tăng tốc **{speedup:.2f}x** "
-                                f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%**. "
-                                f"Thuật toán gom các vector tương đồng vào cùng bucket bằng chuỗi bit băm ngẫu nhiên và mở rộng thăm dò lân cận (Hamming radius=1). "
-                                f"LSH giúp giảm số lượng ứng viên cần tính khoảng cách thật, tối ưu hóa độ trễ truy vấn."
+                                f"({cand_lat:.2f} ms so với {gt_latency:.2f} ms của Linear Scan) với Recall@K đạt **{recall_val:.1f}%** "
+                                f"(m={m_val} siêu phẳng, L={L_val} bảng băm). "
+                                f"Thuật toán gom các vector tương đồng vào cùng bucket nhị phân và mở rộng thăm dò lân cận (Hamming radius=1), "
+                                f"giảm thiểu tối đa số ứng viên cần tính khoảng cách."
                             )
                     except (AlgorithmNotReadyError, NotImplementedError):
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Thời gian (ms)": "Chưa sẵn sàng",
+                            "Thời gian dựng (Build)": bld_str,
+                            "Thời gian tìm kiếm (ms)": "Chưa sẵn sàng",
                             "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })
@@ -676,7 +721,8 @@ def render_search_tab(manager: VectorEngineManager) -> None:
                     except Exception:
                         summary_rows.append({
                             "Thuật toán": algo_label,
-                            "Thời gian (ms)": "Lỗi thực thi",
+                            "Thời gian dựng (Build)": bld_str,
+                            "Thời gian tìm kiếm (ms)": "Lỗi thực thi",
                             "Tốc độ (Speedup)": "—",
                             "Recall@K": "—",
                         })
@@ -684,7 +730,7 @@ def render_search_tab(manager: VectorEngineManager) -> None:
 
             st.session_state["compare_search_result"] = {
                 "query_name": query_name,
-                "metric": metric_key,
+                "metric": cmp_metric,
                 "top_k": top_k,
                 "summary_rows": summary_rows,
                 "detail_results": detail_results,
