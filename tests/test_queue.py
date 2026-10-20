@@ -150,6 +150,62 @@ class TestLinkedQueue(unittest.TestCase):
         self.assertTrue(self.queue.is_empty())
         self.assertEqual(self.queue.size(), 0)
 
+    def test_remove_rear_on_empty_queue_raises(self) -> None:
+        with self.assertRaises(IndexError):
+            self.queue.remove_rear()
+        self.assertTrue(self.queue.is_empty())
+        self.assertEqual(self.queue.size(), 0)
+
+    def test_remove_rear_single_item(self) -> None:
+        self.queue.enqueue("solo")
+        removed = self.queue.remove_rear()
+        self.assertEqual(removed, "solo")
+        self.assertTrue(self.queue.is_empty())
+        self.assertEqual(self.queue.size(), 0)
+        self.assertIsNone(self.queue.front)
+        self.assertIsNone(self.queue.rear)
+
+    def test_remove_rear_multiple_items(self) -> None:
+        items = ["A", "B", "C"]
+        for item in items:
+            self.queue.enqueue(item)
+
+        # Remove "C" from rear
+        removed = self.queue.remove_rear()
+        self.assertEqual(removed, "C")
+        self.assertEqual(self.queue.size(), 2)
+        self.assertEqual(self.queue.peek(), "A")
+        self.assertEqual(self.queue.rear.data, "B")
+        self.assertIsNone(self.queue.rear.next)
+
+        # Remove "B" from rear
+        removed = self.queue.remove_rear()
+        self.assertEqual(removed, "B")
+        self.assertEqual(self.queue.size(), 1)
+        self.assertEqual(self.queue.peek(), "A")
+        self.assertEqual(self.queue.rear.data, "A")
+        self.assertIs(self.queue.front, self.queue.rear)
+        self.assertIsNone(self.queue.rear.next)
+
+        # Remove "A" from rear
+        removed = self.queue.remove_rear()
+        self.assertEqual(removed, "A")
+        self.assertTrue(self.queue.is_empty())
+        self.assertEqual(self.queue.size(), 0)
+        self.assertIsNone(self.queue.front)
+        self.assertIsNone(self.queue.rear)
+
+    def test_remove_rear_interleaved_with_enqueue_and_dequeue(self) -> None:
+        self.queue.enqueue(1)
+        self.queue.enqueue(2)
+        self.queue.enqueue(3)
+        self.assertEqual(self.queue.remove_rear(), 3)
+        self.queue.enqueue(4)
+        self.assertEqual(self.queue.dequeue(), 1)
+        self.assertEqual(self.queue.remove_rear(), 4)
+        self.assertEqual(self.queue.dequeue(), 2)
+        self.assertTrue(self.queue.is_empty())
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

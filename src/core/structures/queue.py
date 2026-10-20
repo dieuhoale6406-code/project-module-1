@@ -56,3 +56,30 @@ class LinkedQueue:
             return None
 
         return self.front.data
+
+    def remove_rear(self) -> Any:
+        """Xóa và trả về phần tử ở cuối hàng đợi."""
+        if self.front is None:
+            raise IndexError("Dequeue from empty queue.")
+
+        if self.front is self.rear:
+            item = self.front.data
+            self.front = None
+            self.rear = None
+            self._size = 0
+            return item
+
+        current = self.front
+        while current.next is not self.rear and current.next is not None:
+            current = current.next
+
+        item = self.rear.data
+        current.next = None
+        self.rear = current
+        self._size -= 1
+        return item
+
+    def dequeue_rear(self) -> Any:
+        """Bí danh cho remove_rear."""
+        return self.remove_rear()
+

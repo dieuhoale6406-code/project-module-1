@@ -126,11 +126,37 @@ class TestQueryQueueUI(unittest.TestCase):
         self.assertEqual(self.app.session_state["query_queue_results"], [])
         self.assertTrue(any("Dữ liệu đã thay đổi" in item.value for item in self.app.info))
 
+    def test_clear_rear_only_removes_last_query_and_preserves_earlier(self) -> None:
+        for word in ["banana", "apple", "cherry"]:
+            self.enqueue(word)
+        queue = self.app.session_state["query_queue"]
+        self.assertEqual(queue.size(), 3)
+        self.assertEqual(queue.peek()["query_name"], "banana")
+        self.assertEqual(queue.rear.data["query_name"], "cherry")
+
+        # Click "Xóa cuối hàng đợi" -> only "cherry" should be removed
+        self.click("Xóa cuối hàng đợi")
+        self.assertEqual(queue.size(), 2)
+        self.assertEqual(queue.peek()["query_name"], "banana")
+        self.assertEqual(queue.rear.data["query_name"], "apple")
+
+        # Click again -> only "apple" should be removed
+        self.click("Xóa cuối hàng đợi")
+        self.assertEqual(queue.size(), 1)
+        self.assertEqual(queue.peek()["query_name"], "banana")
+        self.assertEqual(queue.rear.data["query_name"], "banana")
+
+        # Click again -> "banana" removed, queue empty
+        self.click("Xóa cuối hàng đợi")
+        self.assertTrue(queue.is_empty())
+        self.assertIsNone(queue.front)
+        self.assertIsNone(queue.rear)
+
     def test_clear_pending_preserves_completed_results(self) -> None:
         self.enqueue("apple")
         self.enqueue("banana")
         self.click("Xử lý truy vấn đầu")
-        self.click("Xóa truy vấn đang chờ")
+        self.click("Xóa cuối hàng đợi")
         self.assertTrue(self.app.session_state["query_queue"].is_empty())
         self.assertEqual(len(self.app.session_state["query_queue_results"]), 1)
 

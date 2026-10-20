@@ -65,11 +65,11 @@ def render_query_queue(manager: VectorEngineManager, algorithm_names: Dict[str, 
     col_next, col_all, col_clear = st.columns(3)
     run_next = col_next.button("Xử lý truy vấn đầu", disabled=queue.is_empty())
     run_all = col_all.button("Xử lý tất cả", disabled=queue.is_empty())
-    clear = col_clear.button("Xóa truy vấn đang chờ", disabled=queue.is_empty())
+    clear = col_clear.button("Xóa cuối hàng đợi", disabled=queue.is_empty())
 
     if clear:
-        queue = LinkedQueue()
-        st.session_state["query_queue"] = queue
+        if not queue.is_empty():
+            queue.remove_rear()
         st.rerun()
 
     if run_next or run_all:
