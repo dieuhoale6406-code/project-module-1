@@ -400,20 +400,31 @@ def _render_benchmark_section(manager: Optional[VectorEngineManager] = None) -> 
             import pandas as pd
             df_bm = pd.DataFrame(bm_results)
 
+            algo_color_map = {
+                "Linear Scan": "#E53935",             # Đỏ (Ground Truth)
+                "KD-Tree": "#43A047",                 # Xanh lá cây (Chính xác phân vùng)
+                "IVF-Flat": "#1E88E5",                # Xanh dương (Voronoi)
+                "LSH (Random Hyperplane)": "#FB8C00", # Cam tươi (Băm ngẫu nhiên)
+                "LSH": "#FB8C00",
+            }
+
             with col_chart1:
                 st.markdown("**Thời gian tìm kiếm TB (ms)**")
                 chart_latency = df_bm.pivot(index="n", columns="algorithm", values="mean_latency_ms")
-                st.line_chart(chart_latency)
+                colors1 = [algo_color_map.get(c, "#888888") for c in chart_latency.columns]
+                st.line_chart(chart_latency, color=colors1)
 
             with col_chart2:
                 st.markdown("**Hệ số tăng tốc (Speedup vs GT)**")
                 chart_speedup = df_bm.pivot(index="n", columns="algorithm", values="speedup")
-                st.line_chart(chart_speedup)
+                colors2 = [algo_color_map.get(c, "#888888") for c in chart_speedup.columns]
+                st.line_chart(chart_speedup, color=colors2)
 
             with col_chart3:
                 st.markdown("**Tỷ lệ thu hồi (Recall %)**")
                 chart_recall = df_bm.pivot(index="n", columns="algorithm", values="recall_percent")
-                st.line_chart(chart_recall)
+                colors3 = [algo_color_map.get(c, "#888888") for c in chart_recall.columns]
+                st.line_chart(chart_recall, color=colors3)
 
 
 def render_search_tab(manager: VectorEngineManager) -> None:

@@ -154,7 +154,7 @@ class BenchmarkRunner:
                 # Tự động điều chỉnh thích ứng tham số LSH theo quy mô N
                 if algo_key in ("lsh",) or "lsh" in algo_name.lower():
                     # Multi-Table LSH sweet spot: m trong khoảng 3-6, L=2 bảng để đảm bảo Recall@K đạt 85-95%
-                    adaptive_m = max(3, min(6, 3 + round(n / 2000)))
+                    adaptive_m = 8 if n >= 2000 else max(4, min(8, 4 + round(n / 1000)))
                     if hasattr(algo, "num_hyperplanes"):
                         setattr(algo, "num_hyperplanes", adaptive_m)
                     if hasattr(algo, "num_tables"):
